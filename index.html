@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Minesweeper — A Revolu7ion Edition</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Press Start 2P self-hosted (SIL OFL 1.1): pixel-retro/fonts/ -->
   <style>
     /* ── TOKENS ─────────────────────────────────────────── */
     :root {
@@ -1320,6 +1320,1073 @@
     .zone-xp   { color: var(--gold); }
     .zone-clrd { color: rgba(74,255,63,.6); }
     .td-zone-label { font-family: var(--font-m); font-size: .6rem; color: var(--txt3); letter-spacing: .1em; }
+
+    /* ══════════════════════════════════════════════════════════
+       PIXEL RETRO THEME  (Press Start 2P, SIL OFL 1.1)
+       Art is original and drawn in code / exported as pixel PNGs.
+       Overrides visual chrome only; game logic is unchanged.
+       ══════════════════════════════════════════════════════════ */
+    @font-face {
+      font-family: 'Press Start 2P';
+      src: url('pixel-retro/fonts/PressStart2P-Regular.woff2') format('woff2'),
+           url('pixel-retro/fonts/PressStart2P-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --ink:     #0b1519;
+      --ink2:    #13262b;
+      --n0:      #0a1626;
+      --n1:      #0f2540;
+      --cream:   #fff4d2;
+      --g0: #0f3a22; --g1: #1f6b34; --g2: #2f9a3c; --g3: #4cc548;
+      --g4: #86e35c; --g5: #c6f58c; --g6: #e9ffc0;
+      --y0: #6b3f10; --y1: #b06a18; --y2: #e8a128; --y3: #ffd34a;
+      --y4: #ffeb94; --y5: #fff8d6;
+      --r0: #6b1426; --r1: #b0243a; --r2: #e8433f; --r3: #ff7a5c;
+      --b0: #1a2f7a; --b1: #2a5ccb; --b2: #4f9cf0; --b3: #9fd4ff;
+      --s0: #262a3d; --s1: #3f4460; --s2: #686e8d; --s3: #9aa0bd;
+      --s4: #c9cfe4; --s5: #f0f3fb;
+      --o1: #c4581a; --o2: #ff8a2a; --o3: #ffb45e;
+      --t1: #1d7f86; --t2: #35c2bd; --t3: #8ef0e0;
+      --br0: #4a2a14; --br1: #7a4a24; --br2: #a8703a; --br3: #d09a58; --br4: #ecc88a;
+      --p2: #8a5fe0;
+
+      --base:    #0a1626;
+      --surf:    #0f2540;
+      --surf2:   #143a5c;
+      --brd:     #262a3d;
+      --brd2:    #3f4460;
+      --lime:    #86e35c;
+      --gold:    #ffd34a;
+      --cyan:    #4f9cf0;
+      --orange:  #ff8a2a;
+      --red:     #e8433f;
+      --txt:     #fff4d2;
+      --txt2:    #c9cfe4;
+      --txt3:    #9aa0bd;
+
+      --font-d: 'Press Start 2P', ui-monospace, monospace;
+      --font-u: 'Press Start 2P', ui-monospace, monospace;
+      --font-m: 'Press Start 2P', ui-monospace, monospace;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--font-u);
+      color: var(--cream);
+      background-color: #0a1626;
+      background-image: url('pixel-retro/assets/backdrop.png'), url('pixel-retro/assets/backdrop.png');
+      background-repeat: no-repeat, no-repeat;
+      background-position: top center, bottom center;
+      background-size: 100% auto, 100% auto;
+      image-rendering: pixelated;
+      -webkit-font-smoothing: none;
+      font-smooth: never;
+    }
+    body::before, body::after { display: none !important; }
+
+    button, input, select, textarea {
+      font-family: var(--font-u);
+    }
+
+    /* Pixel images stay crisp. Photo reveal stays painterly. */
+    img, .px-spr, .cell.ch, .cell.fl, .px-map-stage img, .px-map-base,
+    .s-tile-row, .s-logo-bomb, .ov-burst, .td-ov-burst {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #reveal-canvas {
+      image-rendering: auto;
+      z-index: 0 !important;
+      top: 8px !important;
+      left: 8px !important;
+    }
+    #grid { background: transparent !important; }
+
+    /* ── typography helpers ── */
+    .px-outline {
+      text-shadow:
+        -1px 0 0 var(--ink), 1px 0 0 var(--ink),
+        0 -1px 0 var(--ink), 0 1px 0 var(--ink),
+        -1px -1px 0 var(--ink), 1px -1px 0 var(--ink),
+        -1px 1px 0 var(--ink), 1px 1px 0 var(--ink);
+    }
+
+    /* ── SCREENS ── */
+    .screen.active { display: flex; flex-direction: column; align-items: center; min-height: 100dvh; }
+    #screen-setup.screen.active { position: relative; overflow-x: hidden; }
+    #screen-game.active { height: 100dvh; overflow: hidden; }
+
+    /* ── SETUP ── */
+    .setup-wrap {
+      width: 100%;
+      max-width: 430px;
+      padding: 64px 16px 64px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+    .s-logo-rule { display: none !important; }
+
+    .s-logo {
+      font-family: var(--font-d);
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+      background: none;
+      -webkit-text-fill-color: unset;
+      color: var(--y3);
+      font-size: 0;
+      line-height: 1;
+      margin: 8px 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .s-logo-mine, .s-logo-sweeper {
+      font-size: clamp(22px, 8vw, 32px);
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .s-logo-mine {
+      color: var(--y3);
+      text-shadow:
+        0 1px 0 var(--y2), 0 2px 0 var(--y1), 0 3px 0 var(--y0), 0 4px 0 var(--ink),
+        -2px 0 0 var(--ink), 2px 0 0 var(--ink),
+        -2px -2px 0 var(--ink), 2px -2px 0 var(--ink),
+        -2px 2px 0 var(--ink), 2px 2px 0 var(--ink),
+        0 -2px 0 var(--ink);
+    }
+    .s-logo-sweeper {
+      color: var(--g4);
+      text-shadow:
+        0 1px 0 var(--g3), 0 2px 0 var(--g2), 0 3px 0 var(--g1), 0 4px 0 var(--ink),
+        -2px 0 0 var(--ink), 2px 0 0 var(--ink),
+        -2px -2px 0 var(--ink), 2px -2px 0 var(--ink),
+        -2px 2px 0 var(--ink), 2px 2px 0 var(--ink),
+        0 -2px 0 var(--ink);
+    }
+    .s-logo-bomb {
+      width: 36px; height: 36px;
+      margin-left: 2px;
+      margin-top: -10px;
+    }
+    .s-logo-ribbon, .s-logo-sub {
+      display: inline-block;
+      margin: 14px 0 18px;
+      padding: 8px 14px 7px;
+      background: linear-gradient(180deg, var(--r2) 0%, var(--r1) 100%);
+      color: var(--cream);
+      font-size: 8px;
+      line-height: 1.4;
+      letter-spacing: 0;
+      text-transform: none;
+      border: 2px solid var(--ink);
+      box-shadow:
+        inset 1px 1px 0 var(--r3),
+        inset -1px -1px 0 var(--r0),
+        3px 3px 0 var(--ink);
+      text-shadow: 1px 1px 0 var(--r0);
+      position: relative;
+    }
+    .s-logo-ribbon .rib-7 { color: var(--y3); }
+
+    /* tabs */
+    .mode-tabs {
+      display: flex;
+      gap: 0;
+      width: 100%;
+      margin: 4px 0 16px;
+      background: var(--s0);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink), inset 0 1px 0 var(--s2);
+      padding: 0;
+    }
+    .mode-tab, .mode-tab.act-lime, .mode-tab.act-gold, .mode-tab.act-cyan {
+      flex: 1;
+      font-family: var(--font-u);
+      font-size: 7px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--s4);
+      background: transparent;
+      border: 0;
+      border-right: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 10px 2px 8px;
+      box-shadow: none;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+    .mode-tab:last-child { border-right: 0; }
+    .mode-tab.act, .mode-tab.act-lime, .mode-tab.act-gold, .mode-tab.act-cyan {
+      background: linear-gradient(180deg, var(--g4) 0 50%, var(--g3) 50% 100%);
+      color: var(--ink);
+      text-shadow: 1px 1px 0 var(--g6);
+      box-shadow: inset 1px 1px 0 var(--g6), inset -1px -1px 0 var(--g1);
+    }
+
+    .opt-group { width: 100%; margin: 0 0 14px; }
+    .opt-label {
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--y3);
+      text-shadow: 1px 1px 0 var(--ink);
+      margin-bottom: 8px;
+    }
+    .opt-label span { font-size: 7px !important; letter-spacing: 0 !important; color: var(--s3) !important; }
+
+    .pills { gap: 6px; flex-wrap: wrap; }
+    .pill {
+      font-family: var(--font-u);
+      font-size: 8px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--s2) 0 50%, var(--s1) 50% 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 8px 10px 7px;
+      box-shadow: inset 1px 1px 0 var(--s3), inset -1px -1px 0 var(--s0), 2px 2px 0 var(--ink);
+    }
+    .pill.act, .pill.act-gold, .pill.act-lime, .pill.act-cyan {
+      background: linear-gradient(180deg, var(--g4) 0 50%, var(--g3) 50% 100%);
+      color: var(--ink);
+      box-shadow: inset 1px 1px 0 var(--g6), inset -1px -1px 0 var(--g1), 2px 2px 0 var(--ink);
+      text-shadow: none;
+    }
+
+    .opt-info {
+      font-size: 8px;
+      color: var(--s5);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      text-align: center;
+      margin-top: 10px;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    .setup-go { width: 100%; margin: 8px 0 16px; }
+    .btn {
+      font-family: var(--font-u);
+      font-size: 10px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      padding: 12px 16px 11px;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--s2) 0 50%, var(--s1) 50% 100%);
+      box-shadow: inset 2px 2px 0 var(--s4), inset -2px -2px 0 var(--s0), 3px 3px 0 var(--ink);
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+    .btn:active { transform: translate(2px, 2px); box-shadow: inset 2px 2px 0 var(--s0), 0 0 0 var(--ink); }
+    .btn-lime, .btn-lime:hover {
+      background: linear-gradient(180deg, var(--g4) 0 50%, var(--g3) 50% 100%);
+      color: var(--ink);
+      text-shadow: 1px 1px 0 var(--g6);
+      box-shadow: inset 2px 2px 0 var(--g6), inset -2px -2px 0 var(--g1), 4px 4px 0 var(--ink);
+    }
+    .btn-gold, .btn-gold:hover {
+      background: linear-gradient(180deg, var(--y3) 0 50%, var(--y2) 50% 100%);
+      color: var(--ink);
+      text-shadow: 1px 1px 0 var(--y5);
+      box-shadow: inset 2px 2px 0 var(--y5), inset -2px -2px 0 var(--y1), 4px 4px 0 var(--ink);
+    }
+    .btn-ghost, .btn-ghost:hover {
+      background: linear-gradient(180deg, var(--b2) 0 50%, var(--b1) 50% 100%);
+      color: var(--cream);
+      border: 2px solid var(--ink);
+      box-shadow: inset 2px 2px 0 var(--b3), inset -2px -2px 0 var(--b0), 3px 3px 0 var(--ink);
+    }
+    .btn-sm { font-size: 8px; padding: 8px 10px 7px; }
+    .btn-start {
+      width: 100%;
+      font-size: 11px;
+      padding: 14px 8px 13px;
+    }
+    .btn-start { position: relative; }
+    .btn-start::before, .btn-start::after {
+      content: '';
+      display: inline-block;
+      width: 0; height: 0;
+      vertical-align: middle;
+      margin: 0 10px;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+    }
+    .btn-start::before { border-left: 10px solid var(--y3); }
+    .btn-start::after  { border-right: 10px solid var(--y3); }
+
+    /* power-up cards */
+    .pup-select { gap: 8px; }
+    .pup-sel-card {
+      flex: 1;
+      background: linear-gradient(180deg, var(--s1) 0%, var(--s0) 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      box-shadow: inset 1px 1px 0 var(--s3), 3px 3px 0 var(--ink);
+      padding: 10px 6px 8px;
+      text-align: center;
+      min-width: 0;
+    }
+    .pup-sel-card.checked {
+      box-shadow: inset 1px 1px 0 var(--g5), 3px 3px 0 var(--ink), 0 0 0 2px var(--g3);
+      background: linear-gradient(180deg, #1f6b34 0%, #0f3a22 100%);
+    }
+    .pup-sel-card.locked { opacity: 0.72; }
+    .pup-icon {
+      width: 28px; height: 28px;
+      margin: 0 auto 6px;
+      font-size: 0;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+      image-rendering: pixelated;
+    }
+    [id^="pupsel-scan"] .pup-icon { background-image: url('pixel-retro/assets/icon-scan.png'); }
+    [id^="pupsel-shield"] .pup-icon { background-image: url('pixel-retro/assets/icon-shield.png'); }
+    [id^="pupsel-blitz"] .pup-icon { background-image: url('pixel-retro/assets/icon-clock.png'); }
+    .pup-name { font-size: 7px; color: var(--cream); letter-spacing: 0; text-transform: uppercase; text-shadow: 1px 1px 0 var(--ink); }
+    .pup-desc { font-size: 6px; color: var(--s4); letter-spacing: 0; line-height: 1.4; margin-top: 4px; }
+    .pup-lock-lbl { font-size: 6px; color: var(--y3) !important; letter-spacing: 0; margin-top: 4px; }
+
+    .s-tile-row {
+      position: absolute;
+      left: 0; right: 0; bottom: 10px;
+      height: 36px;
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .s-tile-row span {
+      width: 32px; height: 32px;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 100% 100%;
+      image-rendering: pixelated;
+      border: 2px solid var(--ink);
+      box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .s-tile-row .k-tile { background-image: url('pixel-retro/assets/tile-a.png'); }
+    .s-tile-row .k-num  { background: #d4ac66; color: #4f9cf0; font-size: 14px;
+      text-shadow: -1px 0 #0b1519, 1px 0 #0b1519, 0 -1px #0b1519, 0 1px #0b1519; }
+    .s-tile-row .k-flag { background-image: url('pixel-retro/assets/flag.png'), url('pixel-retro/assets/tile-b.png');
+      background-size: 70% 70%, 100% 100%; background-position: center, center; background-repeat: no-repeat; }
+    .s-tile-row .k-mine { background-image: url('pixel-retro/assets/mine.png'), url('pixel-retro/assets/mine-cell.png');
+      background-size: 70% 70%, 100% 100%; background-position: center, center; background-repeat: no-repeat; }
+
+    /* ── HAMBURGER / MENU ── */
+    .hamburger-btn {
+      position: absolute; top: 12px; left: 12px; z-index: 10;
+      background: linear-gradient(180deg, var(--b2) 0 50%, var(--b1) 50% 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 8px 10px 7px;
+      box-shadow: inset 1px 1px 0 var(--b3), inset -1px -1px 0 var(--b0), 3px 3px 0 var(--ink);
+      display: flex; flex-direction: row; align-items: center; gap: 0;
+    }
+    .hamburger-btn:hover { border-color: var(--ink); box-shadow: inset 1px 1px 0 var(--b3), inset -1px -1px 0 var(--b0), 3px 3px 0 var(--ink); }
+    .hamburger-icon { display: none; }
+    .hamburger-label {
+      font-family: var(--font-u);
+      font-size: 8px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--cream);
+      font-weight: 400;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    /* ── PROFILE CORNER ── */
+    .profile-corner {
+      position: absolute; top: 12px; right: 12px; z-index: 10;
+      background: linear-gradient(180deg, var(--br3) 0%, var(--br1) 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 4px 8px 4px 4px;
+      gap: 8px;
+      box-shadow: inset 1px 1px 0 var(--br4), inset -1px -1px 0 var(--br0), 3px 3px 0 var(--ink);
+    }
+    .profile-corner:hover { border-color: var(--ink); box-shadow: inset 1px 1px 0 var(--br4), inset -1px -1px 0 var(--br0), 3px 3px 0 var(--ink); }
+    .pc-avatar {
+      width: 28px; height: 28px; border-radius: 0;
+      background: var(--s0);
+      border: 2px solid var(--ink);
+      font-size: 7px;
+      color: var(--y3);
+    }
+    .pc-name {
+      font-size: 8px;
+      font-weight: 400;
+      color: var(--cream);
+      text-shadow: 1px 1px 0 var(--ink);
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pc-xp {
+      font-size: 7px;
+      color: var(--y3);
+      letter-spacing: 0;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    /* ── GAME HUD ── */
+    #screen-game { background-color: transparent; }
+    .game-hdr {
+      width: 100%;
+      background-image: url('pixel-retro/assets/stone.png');
+      background-repeat: repeat;
+      background-size: 24px 24px;
+      image-rendering: pixelated;
+      border-bottom: 3px solid var(--ink);
+      box-shadow: inset 0 2px 0 var(--s3), inset 0 -2px 0 var(--s0);
+      padding: 8px 8px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .hdr-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hdr-diff {
+      flex: 1;
+      text-align: center;
+      font-size: 8px;
+      color: var(--g4);
+      text-shadow: 1px 1px 0 var(--ink);
+      padding: 6px 8px 5px;
+      background: var(--s0);
+      border: 2px solid var(--ink);
+      box-shadow: inset 1px 1px 0 var(--s2);
+    }
+    .hdr-lcds {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+    }
+    .lcd {
+      flex: 1;
+      background: var(--ink);
+      border: 2px solid var(--s3);
+      box-shadow: inset 2px 2px 0 var(--ink2), 0 0 0 2px var(--ink);
+      padding: 5px 4px 4px;
+      text-align: center;
+      min-width: 0;
+    }
+    .lcd-lbl {
+      display: block;
+      font-size: 7px;
+      color: var(--s3);
+      letter-spacing: 0;
+      margin-bottom: 4px;
+    }
+    .lcd-val {
+      display: block;
+      font-size: 14px;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+    .lcd.mines .lcd-val { color: var(--o2); }
+    .lcd.time  .lcd-val { color: var(--t2); }
+    .lcd.grid  .lcd-val { color: var(--y3); }
+    .hdr-mid { width: 100%; }
+    .chal-timer {
+      font-size: 18px !important;
+      letter-spacing: 1px;
+      color: var(--t2);
+      text-align: center;
+      text-shadow: none;
+    }
+    .chal-timer.urgent { color: var(--o2); }
+    .chal-timer.critical { color: var(--r2); }
+    .chal-meta { font-size: 7px; color: var(--s4); text-align: center; margin-top: 4px; }
+    .pips { justify-content: center; margin-top: 4px; }
+    .pip { width: 8px; height: 8px; border-radius: 0; background: var(--s0); border: 1px solid var(--ink); }
+    .pip.done { background: var(--g3); }
+    .pip.cur { background: var(--y3); }
+
+    .btn-menu-hdr {
+      background: linear-gradient(180deg, var(--b2) 0 50%, var(--b1) 50% 100%) !important;
+      color: var(--cream) !important;
+      box-shadow: inset 1px 1px 0 var(--b3), inset -1px -1px 0 var(--b0), 2px 2px 0 var(--ink) !important;
+    }
+    .btn-reset-hdr {
+      background: linear-gradient(180deg, var(--o2) 0 50%, var(--o1) 50% 100%) !important;
+      color: var(--cream) !important;
+      text-shadow: 1px 1px 0 var(--ink) !important;
+      box-shadow: inset 1px 1px 0 var(--o3), inset -1px -1px 0 #8a3a10, 2px 2px 0 var(--ink) !important;
+    }
+
+    /* ── BOARD ── */
+    .board-area {
+      background: transparent;
+      padding: 10px 10px 8px;
+      justify-content: flex-start;
+    }
+    .grid-wrap {
+      flex: 0 0 auto;
+      background: linear-gradient(180deg, var(--br2) 0%, var(--br1) 100%);
+      border: 3px solid var(--ink);
+      border-radius: 0;
+      padding: 8px;
+      box-shadow:
+        inset 2px 2px 0 var(--br4),
+        inset -2px -2px 0 var(--br0),
+        4px 4px 0 var(--ink);
+      position: relative;
+    }
+    .grid-wrap::before, .grid-wrap::after { /* rivets */
+      content: '';
+      position: absolute;
+      width: 6px; height: 6px;
+      background: var(--y3);
+      box-shadow: 1px 1px 0 var(--y1),
+        calc(100% - 14px) 0 0 var(--y3),
+        calc(100% - 13px) 1px 0 var(--y1);
+      top: 4px; left: 4px;
+      pointer-events: none;
+    }
+    .grid-wrap::after {
+      top: auto; bottom: 4px;
+    }
+    #grid {
+      outline: 2px solid var(--ink);
+      background: var(--ink);
+    }
+    .cell {
+      border-radius: 0 !important;
+      border: 0;
+      font-family: var(--font-m);
+      font-weight: 400;
+      min-width: var(--cs);
+      min-height: var(--cs);
+      flex: 0 0 var(--cs);
+    }
+    .cell.ch {
+      background-image: url('pixel-retro/assets/tile-a.png');
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      box-shadow: none;
+      image-rendering: pixelated;
+    }
+    .grid-row:nth-child(odd)  .cell.ch:nth-child(even),
+    .grid-row:nth-child(even) .cell.ch:nth-child(odd) {
+      background-image: url('pixel-retro/assets/tile-b.png');
+    }
+    .cell.ch:active {
+      background-image: url('pixel-retro/assets/tile-a-pressed.png');
+    }
+    .grid-row:nth-child(odd)  .cell.ch:nth-child(even):active,
+    .grid-row:nth-child(even) .cell.ch:nth-child(odd):active {
+      background-image: url('pixel-retro/assets/tile-b-pressed.png');
+    }
+    .cell.fl {
+      background-image: url('pixel-retro/assets/tile-a.png');
+      background-size: 100% 100%;
+      box-shadow: none;
+    }
+    .grid-row:nth-child(odd)  .cell.fl:nth-child(even),
+    .grid-row:nth-child(even) .cell.fl:nth-child(odd) {
+      background-image: url('pixel-retro/assets/tile-b.png');
+    }
+    .cell.rv {
+      background: transparent;
+      box-shadow:
+        inset 0 -1px 0 rgba(11,21,25,.55),
+        inset -1px 0 0 rgba(11,21,25,.55);
+      font-size: calc(var(--cs) * 0.46);
+      line-height: var(--cs);
+      text-shadow:
+        -2px 0 0 var(--ink), 2px 0 0 var(--ink),
+        0 -2px 0 var(--ink), 0 2px 0 var(--ink),
+        -1px -1px 0 var(--ink), 1px -1px 0 var(--ink),
+        -1px 1px 0 var(--ink), 1px 1px 0 var(--ink);
+    }
+    .cell.mr, .cell.mh {
+      background-image: url('pixel-retro/assets/mine-cell.png');
+      background-size: 100% 100%;
+      box-shadow: none;
+    }
+    .cell.mh {
+      background-image: url('pixel-retro/assets/mine-cell-hit.png');
+    }
+    .px-spr {
+      width: 72%;
+      height: 72%;
+      object-fit: contain;
+      pointer-events: none;
+      image-rendering: pixelated;
+    }
+    .cell.shield-absorbed {
+      background: #1d7f86 !important;
+      box-shadow: inset 2px 2px 0 var(--t3), inset -2px -2px 0 var(--t1) !important;
+    }
+
+    .board-controls {
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 10px 14px;
+      padding: 10px 4px 12px;
+    }
+    .flag-btn, .flag-btn.on {
+      font-family: var(--font-u);
+      font-size: 9px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      padding: 10px 16px 9px 36px;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--r2) 0 50%, var(--r1) 50% 100%);
+      box-shadow: inset 2px 2px 0 var(--r3), inset -2px -2px 0 var(--r0), 3px 3px 0 var(--ink);
+      text-shadow: 1px 1px 0 var(--ink);
+      position: relative;
+    }
+    .flag-btn::before {
+      content: '';
+      position: absolute;
+      left: 10px; top: 50%;
+      width: 18px; height: 20px;
+      transform: translateY(-50%);
+      background: url('pixel-retro/assets/flag.png') center / contain no-repeat;
+      image-rendering: pixelated;
+    }
+    .flag-btn.on {
+      background: linear-gradient(180deg, var(--g4) 0 50%, var(--g3) 50% 100%);
+      color: var(--ink);
+      box-shadow: inset 2px 2px 0 var(--g6), inset -2px -2px 0 var(--g1), 3px 3px 0 var(--ink);
+    }
+    .board-hint {
+      font-size: 7px;
+      color: var(--s5);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      text-align: center;
+      text-shadow: 1px 1px 0 var(--ink);
+      opacity: 1;
+    }
+    .pup-hud { justify-content: center; }
+    .pup-hud-btn {
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      font-family: var(--font-u);
+      font-size: 8px;
+      background: var(--s1);
+      color: var(--cream);
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+
+    /* ── OVERLAYS ── */
+    .overlay {
+      background: rgba(11, 21, 25, .72);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .ov-card {
+      background: linear-gradient(180deg, var(--s1) 0%, var(--s0) 100%);
+      border: 3px solid var(--s4);
+      outline: 3px solid var(--ink);
+      border-radius: 0;
+      padding: 36px 16px 18px;
+      max-width: 300px;
+      width: calc(100% - 32px);
+      box-shadow: inset 2px 2px 0 var(--s3), inset -2px -2px 0 var(--ink), 6px 6px 0 var(--ink);
+      position: relative;
+      overflow: visible;
+    }
+    .ov-card.lose { background: linear-gradient(180deg, #3a1820 0%, #1a0c10 100%); }
+    .ov-card.win  { background: linear-gradient(180deg, #16301c 0%, #0b1a10 100%); }
+    .ov-burst {
+      width: 108px; height: 108px;
+      margin: -70px auto 2px;
+      display: block;
+      image-rendering: pixelated;
+      position: relative;
+      z-index: 2;
+    }
+    .ov-card.lose .ov-burst {
+      background: url('pixel-retro/assets/mine.png') center / 36% no-repeat;
+    }
+    .ov-tag {
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: var(--s4);
+      text-shadow: 1px 1px 0 var(--ink);
+      margin-bottom: 6px;
+    }
+    .ov-card.lose .ov-tag { color: var(--r3); }
+    .ov-card.win  .ov-tag { color: var(--g4); }
+    .ov-eyebrow { display: none; }
+    .ov-title, .ov-title.lime, .ov-title.red, .ov-title.gold {
+      font-family: var(--font-d);
+      font-size: 16px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      line-height: 1.2;
+      margin: 0 0 10px;
+    }
+    .ov-title.red, .ov-card.lose .ov-title {
+      color: var(--r2);
+      text-shadow: 0 2px 0 var(--r0), 2px 2px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink);
+    }
+    .ov-title.lime, .ov-card.win .ov-title {
+      color: var(--g4);
+      text-shadow: 0 2px 0 var(--g1), 2px 2px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink);
+    }
+    .ov-title.gold {
+      color: var(--y3);
+      text-shadow: 0 2px 0 var(--y0), 2px 2px 0 var(--ink);
+    }
+    .ov-divider { display: none; }
+    .ov-sub {
+      font-size: 8px;
+      color: var(--s5);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      line-height: 1.5;
+    }
+    .ov-btns { gap: 8px; margin-top: 14px; flex-direction: row; flex-wrap: wrap; }
+    .ov-btns .btn { flex: 1; min-width: 0; padding: 10px 6px 9px; font-size: 8px; }
+    .ov-xp {
+      display: inline-block;
+      margin-top: 0;
+      position: relative;
+      top: 12px;
+      padding: 6px 10px 5px;
+      background: var(--ink);
+      border: 2px solid var(--y3);
+      color: var(--y3);
+      font-size: 8px;
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+    .ov-score { font-size: 28px; color: var(--y3); text-shadow: 2px 2px 0 var(--ink); }
+    .ov-score-label { font-size: 8px; color: var(--s4); text-transform: uppercase; }
+
+    #xp-toast {
+      font-family: var(--font-u);
+      font-size: 8px;
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      background: var(--y3);
+      color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    /* ── WORLD MAP ── */
+    #panel-3d { width: 100%; }
+    .px-map { width: 100%; }
+    .px-map-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 244 / 366;
+      image-rendering: pixelated;
+    }
+    .px-map-base, .px-island, .px-paths {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      pointer-events: none;
+      display: block;
+    }
+    .px-zone {
+      position: absolute;
+      width: 38%;
+      height: 18%;
+      transform: translate(-50%, -50%);
+      background: transparent;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .px-zone.locked { cursor: default; pointer-events: none; }
+    .px-node {
+      position: absolute;
+      left: 50%; top: 42%;
+      width: 32px; height: 32px;
+      transform: translate(-50%, -50%);
+      image-rendering: pixelated;
+      pointer-events: none;
+    }
+    .px-badge {
+      position: absolute;
+      left: 18%; top: 18%;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--y2);
+      border: 2px solid var(--ink);
+      color: var(--ink);
+      font-size: 8px;
+      line-height: 14px;
+      text-align: center;
+      pointer-events: none;
+    }
+    .px-zone.locked .px-badge { background: var(--s2); color: var(--ink); }
+    .px-plaque {
+      position: absolute;
+      left: 50%; bottom: 4%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 7px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--br3), var(--br1));
+      border: 2px solid var(--ink);
+      padding: 3px 6px 2px;
+      text-shadow: 1px 1px 0 var(--ink);
+      pointer-events: none;
+    }
+    .px-zone.locked .px-plaque {
+      background: linear-gradient(180deg, var(--s2), var(--s0));
+      color: var(--s4);
+    }
+    .px-zone.done .px-plaque { box-shadow: 0 0 0 1px var(--g4); }
+    .px-map-hint {
+      text-align: center;
+      font-size: 7px;
+      color: var(--s5);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      line-height: 1.6;
+      padding: 10px 4px 16px;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    /* ── 3D CHROME ── */
+    .td-hud {
+      background-image: url('pixel-retro/assets/stone.png');
+      background-repeat: repeat;
+      background-size: 24px 24px;
+      image-rendering: pixelated;
+      border-bottom: 3px solid var(--ink);
+      border-radius: 0;
+      padding: 8px 10px;
+      gap: 8px;
+      box-shadow: inset 0 2px 0 var(--s3);
+    }
+    .td-hud-back {
+      font-family: var(--font-u);
+      font-size: 8px;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--b2) 0 50%, var(--b1) 50% 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 7px 8px 6px;
+      box-shadow: inset 1px 1px 0 var(--b3), 2px 2px 0 var(--ink);
+    }
+    .td-zone-label {
+      font-size: 8px;
+      color: var(--y3);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+    .td-hud-stat, .td-hud-stat.flag {
+      font-size: 8px;
+      color: var(--s5);
+      background: var(--ink);
+      border: 2px solid var(--s3);
+      border-radius: 0;
+      padding: 5px 6px 4px;
+    }
+    .td-hud-stat span { color: var(--o2); }
+    .td-hud-stat.flag span { color: var(--r2); }
+    .td-hint {
+      bottom: 148px;
+      font-size: 7px;
+      color: var(--s5);
+      text-shadow: 1px 1px 0 var(--ink);
+      background: rgba(11,21,25,.7);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 6px 8px;
+      letter-spacing: 0;
+    }
+    .td-overlay {
+      background: rgba(11, 21, 25, .72);
+      backdrop-filter: none;
+    }
+    .td-overlay .td-ov-title {
+      font-family: var(--font-d);
+      font-size: 16px;
+      letter-spacing: 0;
+      color: var(--g4);
+      text-shadow: 0 2px 0 var(--g1), 2px 2px 0 var(--ink);
+    }
+    .td-overlay .td-ov-title.dead { color: var(--r2); text-shadow: 0 2px 0 var(--r0), 2px 2px 0 var(--ink); }
+    .td-ov-sub { font-size: 8px; color: var(--s5); text-transform: uppercase; }
+    .td-ov-burst {
+      width: 120px; height: 120px;
+      display: none;
+      margin: 0 auto 8px;
+      image-rendering: pixelated;
+    }
+    .td-overlay.show .td-ov-burst.win { display: block; }
+    .td-overlay.show .td-ov-title.dead ~ .td-ov-burst.win,
+    .td-overlay:has(.td-ov-title.dead) .td-ov-burst.win { display: none; }
+    .td-overlay:has(.td-ov-title.dead) .td-ov-burst.lose { display: block; }
+
+    .n64-btn {
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      font-family: var(--font-u);
+    }
+    .n64-btn-lbl { font-size: 7px; letter-spacing: 0; color: var(--s5); text-shadow: 1px 1px 0 var(--ink); }
+
+    /* ── DRAWER ── */
+    .drawer-overlay { background: rgba(11,21,25,.7); }
+    .drawer {
+      width: min(360px, 96vw);
+      background: var(--n0);
+      background-image: url('pixel-retro/assets/backdrop.png');
+      background-size: 100% auto;
+      background-position: top center;
+      image-rendering: pixelated;
+      border-left: 3px solid var(--ink);
+      box-shadow: -4px 0 0 rgba(11,21,25,.5);
+    }
+    .drawer-hdr {
+      background-image: url('pixel-retro/assets/stone.png');
+      background-repeat: repeat;
+      background-size: 24px 24px;
+      border-bottom: 3px solid var(--ink);
+      padding: 12px 12px 10px;
+    }
+    .drawer-title {
+      font-family: var(--font-u);
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--y3);
+      text-shadow: 0 2px 0 var(--y0), 2px 2px 0 var(--ink);
+    }
+    .drawer-close {
+      font-family: var(--font-u);
+      font-size: 8px;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--r2), var(--r1));
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 6px 8px 5px;
+      box-shadow: inset 1px 1px 0 var(--r3), 2px 2px 0 var(--ink);
+    }
+    .drawer-body { padding: 12px; }
+    .dr-tabs {
+      display: flex;
+      gap: 0;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      margin-bottom: 14px;
+      background: var(--s0);
+    }
+    .dr-tab {
+      flex: 1;
+      font-family: var(--font-u);
+      font-size: 7px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--s4);
+      background: transparent;
+      border: 0;
+      border-right: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 8px 2px;
+      gap: 4px;
+    }
+    .dr-tab:last-child { border-right: 0; }
+    .dr-tab.act {
+      background: linear-gradient(180deg, var(--g4) 0 50%, var(--g3) 50% 100%);
+      color: var(--ink);
+    }
+    .dr-tab svg { display: none; }
+    .dr-store-lbl {
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--s5);
+      text-shadow: 1px 1px 0 var(--ink);
+      margin: 8px 0;
+    }
+    .shop-row {
+      background: var(--s0);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      box-shadow: 2px 2px 0 var(--ink);
+      margin-bottom: 8px;
+    }
+    .shop-row.equipped { box-shadow: 2px 2px 0 var(--ink), 0 0 0 2px var(--g3); }
+    .shop-name { font-size: 8px; color: var(--cream); letter-spacing: 0; }
+    .shop-desc { font-size: 6px; color: var(--s4); letter-spacing: 0; line-height: 1.4; }
+    .shop-btn, .shop-toggle {
+      font-family: var(--font-u);
+      font-size: 7px;
+      text-transform: uppercase;
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+    .shop-equip, .shop-toggle.on {
+      background: var(--g3);
+      color: var(--ink);
+    }
+    .shop-buy { background: var(--y3); color: var(--ink); }
+    .shop-equipped-lbl { font-size: 7px; color: var(--g4); text-transform: uppercase; }
+    .dr-edit-btn {
+      border-radius: 0;
+      border: 2px solid var(--ink);
+      font-family: var(--font-u);
+      font-size: 7px;
+      text-transform: uppercase;
+    }
+
+    /* settings / records / profile modal */
+    .pm-overlay { background: rgba(11,21,25,.75); }
+    .pm-card, .setting-row, .rec-row, .profile-card {
+      background: var(--s0);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+    .pm-card, .profile-card { color: var(--cream); }
+    .xp-track { height: 6px; background: var(--ink); border: 2px solid var(--s2); border-radius: 0; }
+    .xp-fill { border-radius: 0; background: var(--g3); box-shadow: none; }
+
+    /* landscape tweaks kept mobile-first */
+    @media (orientation:landscape) and (max-height:520px) {
+      .s-logo-ribbon { display: none; }
+      .s-tile-row { display: none; }
+      .setup-wrap { padding: 56px 16px 24px; }
+      .s-logo-mine, .s-logo-sweeper { font-size: 18px; }
+    }
+
   </style>
 </head>
 <body>
@@ -1332,7 +2399,7 @@
   <!-- Hamburger -->
   <button class="hamburger-btn" onclick="openDrawer()" aria-label="Open menu">
     <div class="hamburger-icon"><span></span><span></span><span></span></div>
-    <div class="hamburger-label">Menu</div>
+    <div class="hamburger-label">MENU</div>
   </button>
 
   <!-- Profile Corner -->
@@ -1350,28 +2417,30 @@
 
   <div class="setup-wrap">
 
-    <div class="s-logo">Minesweeper</div>
-    <span class="s-logo-rule"></span>
-    <div class="s-logo-sub">A Revolu7ion Edition</div>
+    <div class="s-logo">
+      <div class="s-logo-mine">MINE<img class="s-logo-bomb" src="pixel-retro/assets/mine-logo.png" alt=""></div>
+      <div class="s-logo-sweeper">SWEEPER</div>
+    </div>
+    <div class="s-logo-ribbon">a revolu<span class="rib-7">7</span>ion edition</div>
 
     <!-- Mode switcher -->
     <div class="mode-tabs" role="tablist">
-      <button class="mode-tab act-lime" id="tab-regular"   onclick="switchMode('regular')">Regular Mode</button>
-      <button class="mode-tab"          id="tab-challenge" onclick="switchMode('challenge')">Challenge</button>
-      <button class="mode-tab"          id="tab-3d"        onclick="switchMode('3d')">3D World</button>
+      <button class="mode-tab act-lime" id="tab-regular"   onclick="switchMode('regular')">REGULAR</button>
+      <button class="mode-tab"          id="tab-challenge" onclick="switchMode('challenge')">CHALLENGE</button>
+      <button class="mode-tab"          id="tab-3d"        onclick="switchMode('3d')">3D WORLD</button>
     </div>
 
     <!-- ── Regular Mode panel ── -->
     <div id="panel-regular" style="width:100%">
       <div class="opt-group">
-        <div class="opt-label">Difficulty</div>
+        <div class="opt-label">DIFFICULTY</div>
         <div class="pills" id="pills-reg-diff">
           <div class="pill act" data-val="easy"   onclick="pickPill(this,'reg-diff'); syncRegSetup()">Easy</div>
           <div class="pill"     data-val="medium" onclick="pickPill(this,'reg-diff'); syncRegSetup()">Medium</div>
           <div class="pill"     data-val="hard"   onclick="pickPill(this,'reg-diff'); syncRegSetup()">Hard</div>
           <div class="pill"     data-val="custom" onclick="pickPill(this,'reg-diff'); syncRegSetup()">Custom</div>
         </div>
-        <div class="opt-info" id="reg-info">8 × 8 grid &nbsp;·&nbsp; 10 mines</div>
+        <div class="opt-info" id="reg-info">8x8 GRID / 10 MINES</div>
       </div>
 
       <div class="opt-group" id="custom-size-group" style="display:none">
@@ -1380,7 +2449,7 @@
       </div>
 
       <div class="setup-go">
-        <button class="btn btn-lime" onclick="launchRegular()">Start Game</button>
+        <button class="btn btn-lime btn-start" onclick="launchRegular()">START GAME</button>
       </div>
       <div class="opt-group" id="pup-group-reg">
         <div class="opt-label">Power-Ups <span style="font-size:.48rem;letter-spacing:.2em;color:var(--txt3)">— tap to equip</span></div>
@@ -1400,7 +2469,7 @@
       </div>
 
       <div class="setup-go">
-        <button class="btn btn-gold" onclick="launchChallenge()">Begin Challenge</button>
+        <button class="btn btn-gold btn-start" onclick="launchChallenge()">BEGIN CHALLENGE</button>
       </div>
       <div class="opt-group" id="pup-group-chal">
         <div class="opt-label">Power-Ups <span style="font-size:.48rem;letter-spacing:.2em;color:var(--txt3)">— tap to equip</span></div>
@@ -1408,19 +2477,15 @@
       </div>
     </div>
 
-  </div>
-
     <!-- ── 3D World panel ── -->
     <div id="panel-3d" style="width:100%; display:none">
       <div class="zone-cards" id="zone-cards">
         <!-- populated by buildWorldMap() -->
       </div>
-      <div style="text-align:center; font-size:.58rem; color:var(--txt3); letter-spacing:.1em; padding-bottom:16px;">
-        Clear each zone to unlock the next · Tap any tile to walk
-      </div>
     </div>
 
   </div>
+  <div class="s-tile-row" aria-hidden="true"><span class="k-tile"></span><span class="k-num">1</span><span class="k-flag"></span><span class="k-mine"></span><span class="k-tile"></span></div>
 </div>
 
 <!-- ══════════════════════════════════════════
@@ -1435,9 +2500,9 @@
     </div>
     </div>
     <div class="board-controls">
-      <button class="flag-btn" id="flag-btn" onclick="toggleFlagMode()">Flag Mode</button>
+      <button class="flag-btn" id="flag-btn" onclick="toggleFlagMode()">FLAG MODE</button>
       <div class="pup-hud" id="pup-hud"></div>
-      <div class="board-hint" id="board-hint">Click to reveal &nbsp;·&nbsp; Right-click to flag</div>
+      <div class="board-hint" id="board-hint">CLICK=DIG  /  RIGHT-CLICK=FLAG</div>
     </div>
   </div>
 </div>
@@ -1482,11 +2547,13 @@
 
   <!-- Result overlay -->
   <div class="td-overlay" id="td-overlay">
-    <div class="td-ov-title" id="td-ov-title">YOU WIN</div>
+    <img class="td-ov-burst lose" src="pixel-retro/assets/burst-lose.png" alt="">
+    <img class="td-ov-burst win" src="pixel-retro/assets/burst-win.png" alt="">
+    <div class="td-ov-title" id="td-ov-title">CLEARED</div>
     <div class="td-ov-sub"   id="td-ov-sub">All clear!</div>
     <div class="td-ov-btns">
-      <button class="btn btn-lime" onclick="launch3D()">Play Again</button>
-      <button class="btn" style="border:1px solid var(--brd)" onclick="quit3D()">Exit</button>
+      <button class="btn btn-lime" onclick="launch3D()">PLAY AGAIN</button>
+      <button class="btn" onclick="quit3D()">EXIT</button>
     </div>
   </div>
 </div>
@@ -1513,8 +2580,8 @@
 <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer">
   <div class="drawer-hdr">
-    <div class="drawer-title">Command</div>
-    <button class="drawer-close" onclick="closeDrawer()">Close ✕</button>
+    <div class="drawer-title">COMMAND</div>
+    <button class="drawer-close" onclick="closeDrawer()">CLOSE</button>
   </div>
   <div class="drawer-body" id="drawer-body">
     <!-- rendered by JS -->
@@ -1549,7 +2616,7 @@ const PRESETS = {
   hard:   { sz: 15, mines: 35 },
 };
 
-const NUM_COLORS    = ['', '#4EBDC9','#4AFF3F','#d9713a','#C9A84C','#e05050','#cc88cc','#c8c8c8','#5a7a60'];
+const NUM_COLORS    = ['', '#4f9cf0','#4cc548','#e8433f','#8a5fe0','#ff8a2a','#35c2bd','#9aa0bd','#c9cfe4'];
 const NUM_COLORS_CB = ['', '#0077bb','#ee7733','#aa3377','#009988','#ee3377','#33bbee','#bbbbbb','#44aa99'];
 
 const THEMES = {
@@ -1558,6 +2625,9 @@ const THEMES = {
   cyber:   { id:'cyber',   name:'Cyberpunk',  cls:'t-cyber', unlock:200,  desc:'Neon city rain',     swatch:'linear-gradient(90deg,#07030f,#0f0720,#2a1148)', art:'drawArtCyber'   },
   nature:  { id:'nature',  name:'Forest',     cls:'t-nature',unlock:200,  desc:'Ancient woodland',   swatch:'linear-gradient(90deg,#040c05,#071008,#152e18)', art:'drawArtNature'  },
 };
+
+const PX = 'pixel-retro/assets';
+let lastXpAward = 0;
 
 const POWERUPS = {
   scan:   { id:'scan',   name:'Scan',   icon:'◎', unlock:200, desc:'Reveal a safe cell',    modes:['regular','challenge','3d'] },
@@ -1684,7 +2754,7 @@ function syncRegSetup() {
   } else {
     customGroup.style.display = 'none';
     const p = PRESETS[diff];
-    info.textContent = `${p.sz} × ${p.sz} grid  ·  ${p.mines} mines`;
+    info.textContent = `${p.sz}x${p.sz} GRID / ${p.mines} MINES`;
   }
 }
 
@@ -2138,10 +3208,19 @@ function buildGrid() {
   const hint = document.getElementById('board-hint');
   if (hint) {
     hint.textContent = navigator.maxTouchPoints > 0
-      ? 'Tap · Hold=flag · Pinch=zoom'
-      : 'Click to reveal  ·  Right-click to flag';
+      ? 'TAP=DIG  /  HOLD=FLAG  /  PINCH=ZOOM'
+      : 'CLICK=DIG  /  RIGHT-CLICK=FLAG';
   }
 
+}
+
+function pxSpr(src) {
+  const img = document.createElement('img');
+  img.className = 'px-spr';
+  img.src = src;
+  img.alt = '';
+  img.draggable = false;
+  return img;
 }
 
 function applyCellClass(el, cell) {
@@ -2151,26 +3230,20 @@ function applyCellClass(el, cell) {
 
   if (cell.hitMine) {
     el.classList.add('mh');
-    const dot = document.createElement('span');
-    dot.className = 'mine-dot hit';
-    el.appendChild(dot);
+    el.appendChild(pxSpr(PX + '/mine.png'));
   } else if (cell.revealed && cell.mine) {
     el.classList.add('mr');
-    const dot = document.createElement('span');
-    dot.className = 'mine-dot';
-    el.appendChild(dot);
+    el.appendChild(pxSpr(PX + '/mine.png'));
   } else if (cell.flagged) {
     el.classList.add('fl');
-    const tri = document.createElement('span');
-    tri.className = 'flag-tri';
-    el.appendChild(tri);
+    el.appendChild(pxSpr(PX + '/flag.png'));
   } else if (!cell.revealed) {
     el.classList.add('ch');
   } else if (cell.count > 0) {
     el.classList.add('rv');
-    const numColor = (profile.colorblind ? NUM_COLORS_CB : NUM_COLORS)[cell.count] || '#c8c8c8';
+    const numColor = (profile.colorblind ? NUM_COLORS_CB : NUM_COLORS)[cell.count] || '#c9cfe4';
     el.style.color = numColor;
-    el.style.textShadow = `0 0 9px ${numColor}90`;
+    el.style.textShadow = '-2px 0 0 #0b1519, 2px 0 0 #0b1519, 0 -2px 0 #0b1519, 0 2px 0 #0b1519, -1px -1px 0 #0b1519, 1px -1px 0 #0b1519, -1px 1px 0 #0b1519, 1px 1px 0 #0b1519';
     el.textContent = cell.count;
   } else {
     el.classList.add('rv');
@@ -2194,47 +3267,48 @@ function fmt(s) {
   return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
 }
 
+function padMines(n) {
+  const s = String(n);
+  return n < 0 ? s : s.padStart(3, '0');
+}
+
 function buildHeader() {
   const hdr = document.getElementById('game-hdr');
+  const diff = (G.difficulty || (G.mode === 'challenge' ? 'CHALLENGE' : 'EASY')).toUpperCase();
 
   if (G.mode === 'regular') {
     hdr.innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="quitGame()">Menu</button>
-      <div class="hdr-mid">
-        <div class="hdr-stats">
-          <div class="hdr-stat">
-            <span class="hdr-lbl">Mines</span>
-            <span class="hdr-val" id="h-mines" style="color:var(--orange)">${G.mines - G.flags}</span>
-          </div>
-          <div class="hdr-stat">
-            <span class="hdr-lbl">Time</span>
-            <span class="hdr-val" id="h-time" style="color:var(--cyan)">00:00</span>
-          </div>
-          <div class="hdr-stat">
-            <span class="hdr-lbl">Grid</span>
-            <span class="hdr-val" style="color:var(--gold)">${G.rows}×${G.cols}</span>
-          </div>
-        </div>
+      <div class="hdr-top">
+        <button class="btn btn-sm btn-menu-hdr" onclick="quitGame()">MENU</button>
+        <div class="hdr-diff">${diff}</div>
+        <button class="btn btn-sm btn-reset-hdr" onclick="restartGame()">RESET</button>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="restartGame()">Reset</button>
+      <div class="hdr-lcds">
+        <div class="lcd mines"><span class="lcd-lbl">MINES</span><span class="lcd-val" id="h-mines">${padMines(G.mines - G.flags)}</span></div>
+        <div class="lcd time"><span class="lcd-lbl">TIME</span><span class="lcd-val" id="h-time">00:00</span></div>
+        <div class="lcd grid"><span class="lcd-lbl">GRID</span><span class="lcd-val">${G.rows}x${G.cols}</span></div>
+      </div>
     `;
   } else {
     const lv = LEVELS[G.chalLevel % LEVELS.length];
     const _tc = G.chalTimeLeft <= 10 ? ' critical' : G.chalTimeLeft <= 30 ? ' urgent' : '';
     hdr.innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="quitGame()">Menu</button>
+      <div class="hdr-top">
+        <button class="btn btn-sm btn-menu-hdr" onclick="quitGame()">MENU</button>
+        <div class="hdr-diff">CHALLENGE</div>
+        <button class="btn btn-sm btn-reset-hdr" onclick="restartGame()">RESET</button>
+      </div>
       <div class="hdr-mid">
         <div class="chal-timer${_tc}" id="h-chal-timer">${fmt(G.chalTimeLeft)}</div>
         <div class="chal-meta">
-          <span id="h-level" style="color:var(--gold)">${lv.sz}×${lv.sz}</span>
-          <span class="meta-sep">|</span>
-          <span id="h-done" style="color:var(--lime)">${G.chalDone} cleared</span>
-          <span class="meta-sep">|</span>
-          <span id="h-mines" style="color:var(--orange)">${G.mines - G.flags} mines</span>
+          <span id="h-level">${lv.sz}x${lv.sz}</span>
+          <span class="meta-sep"> | </span>
+          <span id="h-done">${G.chalDone} CLEARED</span>
+          <span class="meta-sep"> | </span>
+          <span id="h-mines">${padMines(G.mines - G.flags)} MINES</span>
         </div>
         <div class="pips" id="h-pips">${buildPips()}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="restartGame()">Reset</button>
     `;
   }
 }
@@ -2258,7 +3332,7 @@ function updateHeader() {
     const tm = document.getElementById('h-time');
     const mn = document.getElementById('h-mines');
     if (tm) tm.textContent = fmt(G.seconds);
-    if (mn) mn.textContent = G.mines - G.flags;
+    if (mn) mn.textContent = padMines(G.mines - G.flags);
   } else {
     const tc = document.getElementById('h-chal-timer');
     const lv = document.getElementById('h-level');
@@ -2271,8 +3345,8 @@ function updateHeader() {
       tc.className = 'chal-timer' + (G.chalTimeLeft <= 10 ? ' critical' : G.chalTimeLeft <= 30 ? ' urgent' : '');
     }
     if (lv) lv.textContent = `${LEVELS[cur].sz}×${LEVELS[cur].sz}`;
-    if (dn) dn.textContent = `${G.chalDone} cleared`;
-    if (mn) mn.textContent = `${G.mines - G.flags} mines`;
+    if (dn) dn.textContent = `${G.chalDone} CLEARED`;
+    if (mn) mn.textContent = `${padMines(G.mines - G.flags)} MINES`;
     if (pp) pp.innerHTML = buildPips();
   }
 }
@@ -2289,7 +3363,7 @@ function toggleFlagMode() {
 function updateFlagBtn() {
   const btn = document.getElementById('flag-btn');
   if (!btn) return;
-  btn.textContent = G.flagMode ? 'Reveal Mode' : 'Flag Mode';
+  btn.textContent = G.flagMode ? 'REVEAL MODE' : 'FLAG MODE';
   btn.classList.toggle('on', G.flagMode);
 }
 
@@ -2301,39 +3375,46 @@ function openOverlay(type) {
   const card = document.getElementById('ov-card');
   const ov   = document.getElementById('overlay');
 
+  const xpChip = lastXpAward ? `<div class="ov-xp">+${lastXpAward} XP</div>` : '';
   if (type === 'win') {
+    card.className = 'ov-card win';
     card.innerHTML = `
-      <div class="ov-eyebrow">Result</div>
-      <div class="ov-title lime">Cleared</div>
-      <div class="ov-divider"></div>
-      <div class="ov-sub">${G.rows}×${G.cols} &nbsp;·&nbsp; ${G.mines} mines &nbsp;·&nbsp; ${fmt(G.seconds)}</div>
+      <img class="ov-burst" src="${PX}/burst-win.png" alt="">
+      <div class="ov-tag">WIN</div>
+      <div class="ov-title lime">CLEARED</div>
+      <div class="ov-sub">${G.rows}x${G.cols}  /  ${G.mines} MINES  /  ${fmt(G.seconds)}</div>
       <div class="ov-btns">
-        <button class="btn btn-lime" onclick="closeOverlay(); restartGame()">Play Again</button>
-        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">Main Menu</button>
+        <button class="btn btn-lime" onclick="closeOverlay(); restartGame()">PLAY AGAIN</button>
+        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">MAIN MENU</button>
       </div>
-      <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;letter-spacing:.14em" onclick="shareResult()">Share Result</button>
+      ${xpChip}
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" onclick="shareResult()">SHARE RESULT</button>
     `;
   } else if (type === 'lose') {
+    card.className = 'ov-card lose';
     card.innerHTML = `
-      <div class="ov-eyebrow">Result</div>
-      <div class="ov-title red">Detonated</div>
-      <div class="ov-divider"></div>
-      <div class="ov-sub">${G.rows}×${G.cols} &nbsp;·&nbsp; ${G.mines} mines &nbsp;·&nbsp; ${fmt(G.seconds)}</div>
+      <img class="ov-burst" src="${PX}/burst-lose.png" alt="">
+      <div class="ov-tag">LOSE</div>
+      <div class="ov-title red">DETONATED</div>
+      <div class="ov-sub">${G.rows}x${G.cols}  /  ${G.mines} MINES  /  ${fmt(G.seconds)}</div>
       <div class="ov-btns">
-        <button class="btn btn-lime" onclick="closeOverlay(); restartGame()">Try Again</button>
-        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">Main Menu</button>
+        <button class="btn btn-lime" onclick="closeOverlay(); restartGame()">TRY AGAIN</button>
+        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">MAIN MENU</button>
       </div>
+      ${xpChip}
     `;
   } else if (type === 'chal-end') {
+    card.className = 'ov-card';
     card.innerHTML = `
-      <div class="ov-eyebrow">Challenge Complete</div>
-      <div class="ov-title gold">Time Expired</div>
+      <div class="ov-tag">CHALLENGE</div>
+      <div class="ov-title gold">TIME EXPIRED</div>
       <div class="ov-score">${G.chalDone}</div>
-      <div class="ov-score-label">Boards Cleared &nbsp;·&nbsp; ${fmt(CHAL.totalSec)}</div>
+      <div class="ov-score-label">BOARDS CLEARED  /  ${fmt(CHAL.totalSec)}</div>
       <div class="ov-btns">
-        <button class="btn btn-gold" onclick="closeOverlay(); launchChallenge(CHAL)">Play Again</button>
-        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">Main Menu</button>
+        <button class="btn btn-gold" onclick="closeOverlay(); launchChallenge(CHAL)">PLAY AGAIN</button>
+        <button class="btn btn-ghost" onclick="closeOverlay(); quitGame()">MAIN MENU</button>
       </div>
+      ${xpChip}
     `;
   }
 
@@ -2342,6 +3423,8 @@ function openOverlay(type) {
 
 function closeOverlay() {
   document.getElementById('overlay').classList.remove('show');
+  const card = document.getElementById('ov-card');
+  if (card) card.className = 'ov-card';
 }
 
 // ══════════════════════════════════════════
@@ -2461,6 +3544,7 @@ function buyItem(id) {
 }
 function awardXP(amount) {
   if (!amount) return;
+  lastXpAward = amount;
   const prevLv = getLevel(profile.totalXp || 0);
   profile.xp     += amount;
   profile.totalXp = (profile.totalXp || 0) + amount;
@@ -3398,114 +4482,77 @@ function buildWorldMap() {
   const done    = Array.isArray(profile.worldCompleted) ? profile.worldCompleted : [];
   const maxOpen = profile.worldUnlocked || 1;
 
-  const W = 340, H = 380;
-  // Zone positions on the world map (x, y, rx, ry)
+  // Art-space positions inside the 244x366 map panel (from the Canvas mockup).
   const zPos = [
-    { x:72,  y:326, rx:60, ry:44 },  // 1 Grasslands - bottom left
-    { x:218, y:262, rx:54, ry:40 },  // 2 Highlands
-    { x:278, y:174, rx:52, ry:38 },  // 3 Ruins
-    { x:112, y:104, rx:54, ry:40 },  // 4 Swamp
-    { x:232, y:36,  rx:48, ry:34 },  // 5 Summit
+    { x: 60,  y: 318, name: 'GRASSLANDS' },
+    { x: 134, y: 254, name: 'HIGHLANDS' },
+    { x: 186, y: 186, name: 'RUINS' },
+    { x: 68,  y: 118, name: 'SWAMP' },
+    { x: 152, y: 48,  name: 'SUMMIT' },
+  ];
+  const ctrl = [
+    { x: 104, y: 310 },
+    { x: 184, y: 232 },
+    { x: 142, y: 156 },
+    { x: 118, y: 74 },
+  ];
+  const bez = (p0, p1, p2, t) => [
+    (1-t)*(1-t)*p0.x + 2*(1-t)*t*p1.x + t*t*p2.x,
+    (1-t)*(1-t)*p0.y + 2*(1-t)*t*p1.y + t*t*p2.y,
   ];
 
-  let svg = [];
-
-  svg.push(`<defs>
-    <radialGradient id="wmbg" cx="45%" cy="75%" r="85%">
-      <stop offset="0%" stop-color="#0c1e10"/>
-      <stop offset="100%" stop-color="#050c07"/>
-    </radialGradient>
-  </defs>`);
-  svg.push(`<rect width="${W}" height="${H}" rx="14" fill="url(#wmbg)"/>`);
-
-  // Subtle grid
-  for (let gx = 20; gx < W; gx += 28)
-    svg.push(`<line x1="${gx}" y1="0" x2="${gx}" y2="${H}" stroke="#182419" stroke-width="1"/>`);
-  for (let gy = 20; gy < H; gy += 28)
-    svg.push(`<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="#182419" stroke-width="1"/>`);
-
-  // Map title
-  svg.push(`<text x="${W/2}" y="375" text-anchor="middle" font-size="7.5" fill="#2a3d2c" letter-spacing="3" font-family="monospace">WORLD MAP</text>`);
-
-  // Trails between zones
-  for (let i = 0; i < zPos.length - 1; i++) {
-    const a = zPos[i], b = zPos[i + 1];
-    const trailOpen = (i + 2) <= maxOpen;
-    const col   = trailOpen ? '#ffffff' : '#2a2a2a';
-    const alpha = trailOpen ? '55' : 'aa';
-    const ctrl  = { x: (a.x + b.x) / 2 + (i % 2 === 0 ? -28 : 28), y: (a.y + b.y) / 2 };
-    svg.push(`<path d="M${a.x},${a.y} Q${ctrl.x},${ctrl.y} ${b.x},${b.y}" fill="none"
-      stroke="${col}${alpha}" stroke-width="2.5" stroke-dasharray="${trailOpen ? '7,5' : '3,9'}"/>`);
-    if (trailOpen) {
-      // Footprint dots along trail
-      for (let t = 0.2; t <= 0.8; t += 0.3) {
-        const px = (1-t)*(1-t)*a.x + 2*(1-t)*t*ctrl.x + t*t*b.x;
-        const py = (1-t)*(1-t)*a.y + 2*(1-t)*t*ctrl.y + t*t*b.y;
-        svg.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2" fill="#ffffff22"/>`);
-      }
+  let stones = '';
+  for (let i = 0; i < 4; i++) {
+    const open = (i + 1) <= maxOpen;
+    const fill = open ? '#ffeb94' : '#c9cfe4';
+    const stroke = open ? '#b06a18' : '#3f4460';
+    const p0 = zPos[i], p2 = zPos[i+1], p1 = ctrl[i];
+    stones += `<path d="M${p0.x} ${p0.y} Q ${p1.x} ${p1.y} ${p2.x} ${p2.y}" fill="none" stroke="${open ? '#ffd34a' : '#9aa0bd'}" stroke-width="2.2" stroke-dasharray="3 4" stroke-linecap="square" opacity="0.95"/>`;
+    const nSt = 12;
+    for (let k = 1; k < nSt; k++) {
+      const [x, y] = bez(p0, p1, p2, k / nSt);
+      stones += `<rect x="${(x-2).toFixed(1)}" y="${(y-1.5).toFixed(1)}" width="4" height="3" fill="${fill}" stroke="${stroke}" stroke-width="0.8"/>`;
+    }
+    for (const t of [0.36, 0.66]) {
+      const [x, y] = bez(p0, p1, p2, t);
+      stones += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${open ? '#e8a128' : '#686e8d'}" stroke="#0b1519" stroke-width="1.3"/>`;
     }
   }
 
-  // Zone blobs
-  ZONES.forEach((z, i) => {
-    const p     = zPos[i];
-    const num   = i + 1;
-    const isDone = done.includes(z.id);
+  const islands = ZONES.map((z, i) => {
+    const num = i + 1;
     const isOpen = num <= maxOpen;
-    const ac    = z.accent;
+    const isDone = done.includes(z.id);
+    const src = PX + '/island-' + num + (isOpen ? '' : '-locked') + '.png';
+    return `<img class="px-island" src="${src}" alt="">`;
+  }).join('');
 
-    // Outer glow (open zones only)
-    if (isOpen)
-      svg.push(`<ellipse cx="${p.x}" cy="${p.y}" rx="${p.rx+10}" ry="${p.ry+7}"
-        fill="${ac}" fill-opacity="0.05" stroke="${ac}" stroke-opacity="0.12" stroke-width="1"/>`);
+  const zones = ZONES.map((z, i) => {
+    const p = zPos[i];
+    const num = i + 1;
+    const isOpen = num <= maxOpen;
+    const isDone = done.includes(z.id);
+    const cls = 'px-zone' + (isOpen ? '' : ' locked') + (isDone ? ' done' : '');
+    const node = isDone ? 'node-cleared.png' : isOpen ? 'node-play.png' : 'node-lock.png';
+    const click = isOpen ? `onclick="launchZone(${i})"` : '';
+    const left = (p.x / 244 * 100).toFixed(2);
+    const top  = (p.y / 366 * 100).toFixed(2);
+    return `<button type="button" class="${cls}" style="left:${left}%;top:${top}%" ${click} aria-label="${z.name}">
+      <img class="px-node" src="${PX}/${node}" alt="">
+      <span class="px-badge">${num}</span>
+      <span class="px-plaque">${zPos[i].name}</span>
+    </button>`;
+  }).join('');
 
-    // Terrain blob
-    svg.push(`<ellipse cx="${p.x}" cy="${p.y}" rx="${p.rx}" ry="${p.ry}"
-      fill="${ac}" fill-opacity="${isOpen ? 0.20 : 0.05}"
-      stroke="${ac}" stroke-opacity="${isOpen ? 0.55 : 0.18}" stroke-width="1.5"
-      ${!isOpen ? 'filter="saturate(0)"' : ''}/>`);
-
-    // Inner highlight
-    svg.push(`<ellipse cx="${p.x}" cy="${p.y - 7}" rx="${p.rx * 0.48}" ry="${p.ry * 0.32}"
-      fill="${ac}" fill-opacity="${isOpen ? 0.14 : 0.03}"/>`);
-
-    // Zone number badge
-    const bx = p.x - p.rx * 0.64, by = p.y - p.ry * 0.64;
-    svg.push(`<circle cx="${bx}" cy="${by}" r="12"
-      fill="${isOpen ? ac : '#222'}" fill-opacity="${isOpen ? 0.85 : 0.6}"/>`);
-    svg.push(`<text x="${bx}" y="${by}" text-anchor="middle" dominant-baseline="central"
-      font-size="9" font-weight="bold" fill="${isOpen ? '#000d04' : '#555'}"
-      font-family="monospace">${num}</text>`);
-
-    // Status icon
-    const icon = isDone ? '✓' : isOpen ? '▶' : '⬡';
-    svg.push(`<text x="${p.x}" y="${p.y - 3}" text-anchor="middle" dominant-baseline="central"
-      font-size="${isOpen ? 17 : 15}" fill="${isOpen ? (isDone ? '#7fff88' : ac) : '#444'}">${icon}</text>`);
-
-    // Zone name
-    svg.push(`<text x="${p.x}" y="${p.y + 16}" text-anchor="middle"
-      font-size="9.5" fill="${isOpen ? '#ccd8cc' : '#393939'}"
-      font-family="monospace" letter-spacing="0.8">${z.name.toUpperCase()}</text>`);
-
-    // Cleared badge
-    if (isDone)
-      svg.push(`<text x="${p.x}" y="${p.y + 27}" text-anchor="middle"
-        font-size="7.5" fill="#4AFF3F" font-family="monospace" letter-spacing="1.5">CLEARED</text>`);
-
-    // Lock label for closed zones
-    if (!isOpen)
-      svg.push(`<text x="${p.x}" y="${p.y + 27}" text-anchor="middle"
-        font-size="7.5" fill="#444" font-family="monospace" letter-spacing="1">LOCKED</text>`);
-
-    // Clickable hit area
-    if (isOpen)
-      svg.push(`<ellipse cx="${p.x}" cy="${p.y}" rx="${p.rx}" ry="${p.ry}"
-        fill="transparent" style="cursor:pointer" onclick="launchZone(${i})"/>`);
-  });
-
-  cont.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}"
-    style="max-width:100%;display:block;margin:0 auto;border-radius:14px;overflow:hidden;"
-    >${svg.join('')}</svg>`;
+  cont.innerHTML = `<div class="px-map">
+    <div class="px-map-stage">
+      <img class="px-map-base" src="${PX}/map-base.png" alt="">
+      ${islands}
+      <svg class="px-paths" viewBox="0 0 244 366" preserveAspectRatio="none">${stones}</svg>
+      ${zones}
+    </div>
+    <div class="px-map-hint">CLEAR EACH ZONE TO UNLOCK<br>THE NEXT. TAP A TILE TO WALK</div>
+  </div>`;
 }
 
 function td_viewSize() {
@@ -4189,7 +5236,7 @@ function td_reveal(r, c) {
       for (let cc = 0; cc < TD.cols; cc++)
         if (TD.board[rr][cc].mine) TD.board[rr][cc].revealed = true;
     setTimeout(() => {
-      document.getElementById('td-ov-title').textContent = 'GAME OVER';
+      document.getElementById('td-ov-title').textContent = 'DETONATED';
       document.getElementById('td-ov-title').className   = 'td-ov-title dead';
       document.getElementById('td-ov-sub').textContent   = 'Stepped on a mine';
       document.getElementById('td-overlay').classList.add('show');
@@ -4239,7 +5286,7 @@ function td_completeZone() {
       : `All zones cleared · +${z.xpReward} XP · Campaign complete!`;
 
   setTimeout(() => {
-    document.getElementById('td-ov-title').textContent = 'ZONE CLEARED';
+    document.getElementById('td-ov-title').textContent = 'CLEARED';
     document.getElementById('td-ov-title').className   = 'td-ov-title';
     document.getElementById('td-ov-sub').textContent   = sub;
     document.getElementById('td-overlay').classList.add('show');
