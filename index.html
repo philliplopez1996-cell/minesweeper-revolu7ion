@@ -19,8 +19,8 @@
       --orange:  #d9713a;
       --red:     #cc3333;
       --txt:     #d8e8da;
-      --txt2:    #4a6e50;
-      --txt3:    #2a4030;
+      --txt2:    #689a70;
+      --txt3:    #5e8f6b;
 
       --font-d: 'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
       --font-u: 'DM Sans', -apple-system, 'Helvetica Neue', sans-serif;
@@ -434,13 +434,28 @@
     /* ── BOARD AREA ─────────────────────────────────────── */
     .board-area {
       flex: 1;
-      overflow: auto;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
       padding: 16px;
       gap: 12px;
+      min-height: 0;
+      width: 100%;
+      max-width: 100%;
+    }
+    .grid-scroll {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      overflow: auto;
+      display: flex;
+      align-items: safe center;
+      justify-content: safe center;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Board area flash on win/lose (challenge) */
@@ -483,6 +498,7 @@
     .grid-wrap {
       display: inline-block;
       position: relative;
+      flex: 0 0 auto;
       border: 1px solid var(--brd);
       border-radius: 6px;
       overflow: hidden;
@@ -492,7 +508,7 @@
         0 12px 40px rgba(0,0,0,.7),
         inset 0 0 0 1px rgba(74,255,63,.03);
     }
-    .grid-row { display: flex; }
+    .grid-row { display: flex; flex-shrink: 0; }
 
     #reveal-canvas {
       position: absolute;
@@ -506,6 +522,9 @@
     .cell {
       width: var(--cs);
       height: var(--cs);
+      min-width: var(--cs);
+      min-height: var(--cs);
+      flex: 0 0 var(--cs);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -706,14 +725,14 @@
       --brd:#152e18;--brd2:#1c3e22;
       --lime:#52d448;--gold:#c8a032;--cyan:#5ab87a;
       --orange:#c8782a;--red:#c03030;
-      --txt:#cce8c8;--txt2:#486840;--txt3:#283e22;
+      --txt:#cce8c8;--txt2:#66945b;--txt3:#598a4b;
     }
     body.t-cyber {
       --base:#07030f;--surf:#0f0720;--surf2:#150a2c;
       --brd:#2a1148;--brd2:#3c1862;
       --lime:#c060ff;--gold:#ff3f82;--cyan:#00e5ff;
       --orange:#ff8030;--red:#ff2828;
-      --txt:#e8d8ff;--txt2:#7840b0;--txt3:#4a2070;
+      --txt:#e8d8ff;--txt2:#a490b8;--txt3:#9279a9;
     }
 
     /* ── PROFILE CARD ────────────────────────────────────── */
@@ -1166,7 +1185,7 @@
     .td-pup-btn.spent { opacity: 0.3; }
 
     .td-hint {
-      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: 148px; left: 50%; transform: translateX(-50%);
       font-family: var(--font-u); font-size: .66rem; color: var(--txt3);
       letter-spacing: .1em; text-align: center; pointer-events: none; z-index: 10;
       white-space: nowrap;
@@ -1410,8 +1429,10 @@
 <div id="screen-game" class="screen">
   <div class="game-hdr" id="game-hdr"></div>
   <div class="board-area" id="board-area">
+    <div class="grid-scroll" id="grid-scroll">
     <div class="grid-wrap" id="grid-wrap">
       <div id="grid"></div>
+    </div>
     </div>
     <div class="board-controls">
       <button class="flag-btn" id="flag-btn" onclick="toggleFlagMode()">Flag Mode</button>
@@ -1975,11 +1996,96 @@ function flash(type) {
 
 function calcCellSize() {
   const dim = Math.max(G.rows, G.cols);
+  const minCs = (navigator.maxTouchPoints > 0) ? 40 : 22;
   const avail = Math.min(window.innerWidth - 36, window.innerHeight - 220);
-  return Math.max(22, Math.min(56, Math.floor(avail / dim)));
+  return Math.max(minCs, Math.min(56, Math.floor(avail / dim)));
 }
 
 let touchData = null;
+let gridGesturesBound = false;
+let gridZoom = 1;
+let pinchState = null;
+
+function gridTouchStart(e) {
+  if (e.touches.length >= 2) {
+    if (touchData) { clearTimeout(touchData.t); touchData = null; }
+    return;
+  }
+  const el = e.target.closest('[data-r]');
+  if (!el) return;
+  const r = +el.dataset.r, c = +el.dataset.c;
+  const t0 = e.touches[0];
+  touchData = {
+    r, c,
+    x: t0.clientX, y: t0.clientY,
+    t: setTimeout(() => { touchData = null; onFlag(r, c); }, 500),
+  };
+}
+function gridTouchEnd(e) {
+  if (!touchData) return;
+  e.preventDefault();
+  clearTimeout(touchData.t);
+  const { r, c } = touchData;
+  touchData = null;
+  onReveal(r, c);
+}
+function gridTouchMove(e) {
+  if (!touchData || !e.touches[0]) return;
+  const dx = e.touches[0].clientX - touchData.x;
+  const dy = e.touches[0].clientY - touchData.y;
+  if (dx * dx + dy * dy > 100) {
+    clearTimeout(touchData.t);
+    touchData = null;
+  }
+}
+function wrapPinchStart(e) {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    if (touchData) { clearTimeout(touchData.t); touchData = null; }
+    pinchState = {
+      d0: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY),
+      z0: gridZoom,
+    };
+  }
+}
+function wrapPinchMove(e) {
+  if (pinchState && e.touches.length === 2) {
+    e.preventDefault();
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    gridZoom = Math.min(3.5, Math.max(0.75, pinchState.z0 * d / pinchState.d0));
+    const wrapEl = document.getElementById('grid-wrap');
+    if (wrapEl) wrapEl.style.transform = 'scale(' + gridZoom + ')';
+  }
+}
+function wrapPinchEnd(e) {
+  if (e.touches.length < 2) {
+    pinchState = null;
+    if (gridZoom < 0.9) {
+      gridZoom = 1;
+      const wrapEl = document.getElementById('grid-wrap');
+      if (wrapEl) wrapEl.style.transform = '';
+    }
+  }
+}
+function wrapResetZoom() {
+  gridZoom = 1;
+  const wrapEl = document.getElementById('grid-wrap');
+  if (wrapEl) wrapEl.style.transform = '';
+}
+function bindGridGestures() {
+  if (gridGesturesBound) return;
+  const grid = document.getElementById('grid');
+  const wrapEl = document.getElementById('grid-wrap');
+  if (!grid || !wrapEl) return;
+  grid.addEventListener('touchstart', gridTouchStart, { passive: true });
+  grid.addEventListener('touchend', gridTouchEnd, { passive: false });
+  grid.addEventListener('touchmove', gridTouchMove, { passive: true });
+  wrapEl.addEventListener('touchstart', wrapPinchStart, { passive: false });
+  wrapEl.addEventListener('touchmove', wrapPinchMove, { passive: false });
+  wrapEl.addEventListener('touchend', wrapPinchEnd, { passive: true });
+  wrapEl.addEventListener('dblclick', wrapResetZoom);
+  gridGesturesBound = true;
+}
 
 function buildGrid() {
   const wrap = document.getElementById('grid-wrap');
@@ -2024,25 +2130,10 @@ function buildGrid() {
     if (el) onFlag(+el.dataset.r, +el.dataset.c);
   };
 
-  touchData = null;
-  grid.addEventListener('touchstart', (e) => {
-    const el = e.target.closest('[data-r]');
-    if (!el) return;
-    e.preventDefault();
-    const r = +el.dataset.r, c = +el.dataset.c;
-    touchData = { r, c, t: setTimeout(() => { touchData = null; onFlag(r, c); }, 500) };
-  }, { passive: false });
-  grid.addEventListener('touchend', (e) => {
-    if (!touchData) return;
-    e.preventDefault();
-    clearTimeout(touchData.t);
-    const { r, c } = touchData;
-    touchData = null;
-    onReveal(r, c);
-  }, { passive: false });
-  grid.addEventListener('touchmove', () => {
-    if (touchData) { clearTimeout(touchData.t); touchData = null; }
-  }, { passive: true });
+  if (touchData) { clearTimeout(touchData.t); touchData = null; }
+  bindGridGestures();
+  gridZoom = 1;
+  wrap.style.transform = '';
 
   const hint = document.getElementById('board-hint');
   if (hint) {
@@ -2051,33 +2142,6 @@ function buildGrid() {
       : 'Click to reveal  ·  Right-click to flag';
   }
 
-  // Pinch-to-zoom
-  let pinchState = null, gridZoom = 1;
-  wrap.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      if (touchData) { clearTimeout(touchData.t); touchData = null; }
-      pinchState = {
-        d0: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY),
-        z0: gridZoom,
-      };
-    }
-  }, { passive: false });
-  wrap.addEventListener('touchmove', (e) => {
-    if (pinchState && e.touches.length === 2) {
-      e.preventDefault();
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      gridZoom = Math.min(3.5, Math.max(0.75, pinchState.z0 * d / pinchState.d0));
-      wrap.style.transform = `scale(${gridZoom})`;
-    }
-  }, { passive: false });
-  wrap.addEventListener('touchend', (e) => {
-    if (e.touches.length < 2) {
-      pinchState = null;
-      if (gridZoom < 0.9) { gridZoom = 1; wrap.style.transform = ''; }
-    }
-  }, { passive: true });
-  wrap.addEventListener('dblclick', () => { gridZoom = 1; wrap.style.transform = ''; });
 }
 
 function applyCellClass(el, cell) {
@@ -2428,7 +2492,8 @@ function toggleSounds() {
 }
 function toggleColorblind() {
   profile.colorblind = !profile.colorblind;
-  saveProfile(); renderDrawer(); renderBoard();
+  saveProfile(); renderDrawer();
+  if (G.board) renderBoard();
 }
 function shareResult() {
   const cvs = document.createElement('canvas');
@@ -3443,6 +3508,27 @@ function buildWorldMap() {
     >${svg.join('')}</svg>`;
 }
 
+function td_viewSize() {
+  if (TD && TD.viewW != null && TD.viewH != null) return [TD.viewW, TD.viewH];
+  const c = TD && TD.canvas;
+  if (c && c.clientWidth) return [c.clientWidth, c.clientHeight];
+  return [window.innerWidth, window.innerHeight];
+}
+
+function td_teardown() {
+  if (!TD) return;
+  if (TD.raf) cancelAnimationFrame(TD.raf);
+  if (TD._onKeydown)     document.removeEventListener('keydown', TD._onKeydown);
+  if (TD._resizeFn)      window.removeEventListener('resize', TD._resizeFn);
+  if (TD.canvas) {
+    if (TD._onClick)        TD.canvas.removeEventListener('click', TD._onClick);
+    if (TD._onWheel)        TD.canvas.removeEventListener('wheel', TD._onWheel);
+    if (TD._onTouchStart2)  TD.canvas.removeEventListener('touchstart', TD._onTouchStart2);
+    if (TD._onTouchMove2)   TD.canvas.removeEventListener('touchmove', TD._onTouchMove2);
+    TD.canvas.removeEventListener('touchend', td_onCanvasTouch);
+  }
+}
+
 function launch3D() {
   const zIdx = (TD && TD.zoneIndex != null) ? TD.zoneIndex : 0;
   launchZone(zIdx);
@@ -3451,7 +3537,8 @@ function launch3D() {
 function launchZone(zoneIndex) {
   const zone = ZONES[zoneIndex];
   if (!zone) return;
-  if (TD && TD.raf) { cancelAnimationFrame(TD.raf); TD = null; }
+  td_teardown();
+  TD = null;
 
   TD = {
     zone, zoneIndex,
@@ -3491,8 +3578,17 @@ function launchZone(zoneIndex) {
   TD.ctx = canvas.getContext('2d');
 
   function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    TD.dpr = dpr;
+    TD.viewW = w;
+    TD.viewH = h;
+    TD.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     td_snapCamera();
   }
   resize();
@@ -3507,7 +3603,7 @@ function launchZone(zoneIndex) {
   canvas.addEventListener('touchend', td_onCanvasTouch, { passive: false });
 
   // Clouds, birds, time, zoom
-  TD.clouds    = td_initClouds(canvas.width, canvas.height);
+  TD.clouds    = td_initClouds(TD.viewW, TD.viewH);
   TD.birds     = [];
   TD.birdTimer = 3 + Math.random() * 6;
   TD.dayTime   = 5; // start mid-morning (sun already up)
@@ -3560,15 +3656,7 @@ function launchZone(zoneIndex) {
 }
 
 function quit3D() {
-  if (!TD) return;
-  if (TD.raf) cancelAnimationFrame(TD.raf);
-  if (TD._onKeydown)    document.removeEventListener('keydown', TD._onKeydown);
-  if (TD._resizeFn)     window.removeEventListener('resize', TD._resizeFn);
-  if (TD._onClick)      TD.canvas.removeEventListener('click', TD._onClick);
-  if (TD._onWheel)      TD.canvas.removeEventListener('wheel', TD._onWheel);
-  if (TD._onTouchStart2) TD.canvas.removeEventListener('touchstart', TD._onTouchStart2);
-  if (TD._onTouchMove2)  TD.canvas.removeEventListener('touchmove',  TD._onTouchMove2);
-  TD.canvas.removeEventListener('touchend', td_onCanvasTouch);
+  td_teardown();
   TD = null;
   goTo('setup');
   buildWorldMap();
@@ -3743,8 +3831,9 @@ function td_snapCamera() {
   const cC = (C - 1) * 0.5, rC = (R - 1) * 0.5;
   // Push camera lower for tall-terrain zones so cliffs aren't cropped
   const camYFrac = [0.36, 0.50, 0.36, 0.34, 0.42][TD.zoneIndex || 0] || 0.36;
-  TD.camOX = canvas.width  * 0.5  - (cC - rC) * ISO.HW;
-  TD.camOY = canvas.height * camYFrac - (cC + rC + 1) * ISO.HH;
+  const [vW, vH] = td_viewSize();
+  TD.camOX = vW * 0.5  - (cC - rC) * ISO.HW;
+  TD.camOY = vH * camYFrac - (cC + rC + 1) * ISO.HH;
   TD.camTOX = TD.camOX; TD.camTOY = TD.camOY;
 }
 
@@ -3756,7 +3845,7 @@ function td_targetCamera() {
 function td_screenToTile(px, py) {
   const { HW, HH } = ISO;
   const zoom = TD.zoom || 1;
-  const W = TD.canvas.width, H = TD.canvas.height;
+  const [W, H] = td_viewSize();
   const wx = (px - W * 0.5) / zoom + W * 0.5;
   const wy = (py - H * 0.5) / zoom + H * 0.5;
   const adjX = wx - TD.camOX;
@@ -3809,7 +3898,7 @@ function td_loop(ts) {
   if (TD.boom) TD.boom.t = Math.min(1, TD.boom.t + dt * 1.8);
 
   // Clouds drift slowly left; respawn off the right when they exit left
-  const W = TD.canvas.width, H = TD.canvas.height;
+  const [W, H] = td_viewSize();
   if (TD.clouds) {
     TD.clouds.forEach(cl => {
       cl.x += cl.speed * dt;
@@ -4171,7 +4260,7 @@ const BIRD_PX = [
 
 function td_render() {
   const { canvas, ctx } = TD;
-  const W = canvas.width, H = canvas.height;
+  const [W, H] = td_viewSize();
 
   ctx.clearRect(0, 0, W, H);
 
