@@ -2308,7 +2308,8 @@
     .td-hud-stat span { color: var(--o2); }
     .td-hud-stat.flag span { color: var(--r2); }
     .td-hint {
-      bottom: 148px;
+      top: 52px;
+      bottom: auto;
       font-size: 7px;
       color: var(--s5);
       text-shadow: 1px 1px 0 var(--ink);
@@ -2469,6 +2470,55 @@
     .xp-track { height: 6px; background: var(--ink); border: 2px solid var(--s2); border-radius: 0; }
     .xp-fill { border-radius: 0; background: var(--g3); box-shadow: none; }
 
+
+    /* ── Sprite-stack 3D World ── */
+    #screen-3d.self-landscape {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100dvh;
+      height: 100dvw;
+      min-height: 0 !important;
+      max-width: none;
+      max-height: none;
+      transform: rotate(-90deg) translateX(-100%);
+      transform-origin: top left;
+      z-index: 5;
+      overflow: hidden;
+    }
+    body.td-self-land { overflow: hidden; }
+    .td-rot {
+      pointer-events: all;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .td-rot-btn {
+      font-family: var(--font-u);
+      font-size: 8px;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: linear-gradient(180deg, var(--s3) 0 50%, var(--s1) 50% 100%);
+      border: 2px solid var(--ink);
+      border-radius: 0;
+      padding: 7px 8px 6px;
+      box-shadow: inset 1px 1px 0 var(--s4), 2px 2px 0 var(--ink);
+      cursor: pointer;
+      line-height: 1;
+      min-width: 28px;
+    }
+    .td-rot-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: inset 1px 1px 0 var(--s0), 0 0 0 var(--ink);
+    }
+    .td-rot-lbl {
+      font-family: var(--font-u);
+      font-size: 6px;
+      color: var(--s5);
+      text-shadow: 1px 1px 0 var(--ink);
+      letter-spacing: 0;
+    }
     /* landscape tweaks kept mobile-first */
     @media (orientation:landscape) and (max-height:520px) {
       .s-logo-ribbon { display: none; }
@@ -2619,6 +2669,15 @@
     <div class="td-zone-label" id="td-zone-label"></div>
     <div class="td-hud-stat">Mines&nbsp;<span id="td-mines">0</span></div>
     <div class="td-hud-stat flag">Flags&nbsp;<span id="td-flags">0</span></div>
+    <div class="td-rot">
+      <button class="td-rot-btn" type="button" aria-label="Rotate left"
+              onmousedown="ss_setYawDir(-1)" ontouchstart="event.preventDefault();ss_setYawDir(-1)"
+              onmouseup="ss_setYawDir(0)" onmouseleave="ss_setYawDir(0)" ontouchend="ss_setYawDir(0)">◀</button>
+      <div class="td-rot-lbl">TURN</div>
+      <button class="td-rot-btn" type="button" aria-label="Rotate right"
+              onmousedown="ss_setYawDir(1)" ontouchstart="event.preventDefault();ss_setYawDir(1)"
+              onmouseup="ss_setYawDir(0)" onmouseleave="ss_setYawDir(0)" ontouchend="ss_setYawDir(0)">▶</button>
+    </div>
   </div>
 
   <!-- Controller: joystick · B (flag) · A (reveal) -->
@@ -2644,7 +2703,7 @@
 
   <div class="td-pup-hud" id="td-pup-hud"></div>
 
-  <div class="td-hint" id="td-hint">Tap any tile to walk there &nbsp;&#183;&nbsp; Space — Reveal &nbsp;&#183;&nbsp; F — Flag</div>
+  <div class="td-hint" id="td-hint">DRAG TO ROTATE &nbsp;&#183;&nbsp; TAP TO WALK &nbsp;&#183;&nbsp; Q/E TURN &nbsp;&#183;&nbsp; SPACE REVEAL &nbsp;&#183;&nbsp; F FLAG</div>
 
   <!-- Result overlay -->
   <div class="td-overlay" id="td-overlay">
@@ -4657,6 +4716,601 @@ function buildWorldMap() {
   </div>`;
 }
 
+// ── Sprite-stack 3D World renderer ───────────────────────
+const SS_DIR = 'pixel-retro/stacks/';
+const SS_NAMES = ['grass-block','tile-unrevealed','tile-revealed-1','pine-tree','rock','mine','flag'];
+const SS_ANGLES = 32;
+const SS_SCALE  = 4;
+const SS_PITCH_SRC = 16; // tile footprint in source px
+
+const SS = {
+  ready: false,
+  loading: false,
+  imgs: {},
+  meta: {},
+  // cache[name][angleIndex] = { cnv, ax, ay }
+  cache: {},
+  // stripped revealed base (no blue "1")
+  revealedBaseImg: null,
+};
+window.SS = SS;
+
+function ss_url(name, kind) {
+  return SS_DIR + name + (kind === 'json' ? '.json' : '-slices.png');
+}
+
+function ss_loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error('stack image failed: ' + src));
+    im.src = src;
+  });
+}
+
+async function ss_preload() {
+  if (SS.ready || SS.loading) return SS._p;
+  SS.loading = true;
+  SS._p = (async () => {
+    await Promise.all(SS_NAMES.map(async (name) => {
+      const [img, meta] = await Promise.all([
+        ss_loadImage(ss_url(name, 'png')),
+        fetch(ss_url(name, 'json')).then(r => {
+          if (!r.ok) throw new Error('stack json failed: ' + name);
+          return r.json();
+        }),
+      ]);
+      SS.imgs[name] = img;
+      SS.meta[name] = meta;
+    }));
+    SS.revealedBaseImg = ss_makeRevealedBase(SS.imgs['tile-revealed-1'], SS.meta['tile-revealed-1']);
+    ss_bakeAll();
+    SS.ready = true;
+    SS.loading = false;
+  })();
+  return SS._p;
+}
+
+// Punch the baked blue "1" out of tile-revealed-1 so 0 and 2–8 can reuse the base.
+function ss_makeRevealedBase(img, j) {
+  const w = j.slice_width, h = j.slice_height, n = j.slice_count;
+  const cnv = document.createElement('canvas');
+  cnv.width = img.width; cnv.height = img.height;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, cnv.width, cnv.height);
+  const d = data.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i+3] < 8) continue;
+    const r = d[i], g = d[i+1], b = d[i+2];
+    // blue "1" voxels (bright azure / pale cyan)
+    if ((b > r + 40 && b > g + 8 && b >= 200) || (b > r + 50 && b > g + 20 && g < 180 && b >= 140)) {
+      // replace with neighbouring top-stone mauve
+      d[i] = 154; d[i+1] = 160; d[i+2] = 189; d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(data, 0, 0);
+  return cnv;
+}
+
+function ss_sliceCanvas(img, j, i) {
+  const w = j.slice_width, h = j.slice_height, s = j.recommended_scale || SS_SCALE;
+  const src = document.createElement('canvas');
+  src.width = w * s; src.height = h * s;
+  const ctx = src.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, i * w, 0, w, h, 0, 0, w * s, h * s);
+  return src;
+}
+
+function ss_rotateNN(srcCnv, angle, squash) {
+  const sw = srcCnv.width, sh = srcCnv.height;
+  const srcCtx = srcCnv.getContext('2d');
+  const src = srcCtx.getImageData(0, 0, sw, sh).data;
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const q = squash || 1;
+  // AABB of rotated + squashed quad
+  const corners = [[0,0],[sw,0],[sw,sh],[0,sh]];
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (const [x, y] of corners) {
+    const rx = (x - sw / 2) * cos - (y - sh / 2) * sin;
+    const ry = ((x - sw / 2) * sin + (y - sh / 2) * cos) * q;
+    if (rx < minx) minx = rx; if (rx > maxx) maxx = rx;
+    if (ry < miny) miny = ry; if (ry > maxy) maxy = ry;
+  }
+  const dw = Math.max(1, Math.ceil(maxx - minx) + 2);
+  const dh = Math.max(1, Math.ceil(maxy - miny) + 2);
+  const ox = -minx + 1, oy = -miny + 1;
+  const out = document.createElement('canvas');
+  out.width = dw; out.height = dh;
+  const octx = out.getContext('2d');
+  const dest = octx.createImageData(dw, dh);
+  const dd = dest.data;
+  const invq = q ? 1 / q : 1;
+  for (let y = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++) {
+      const rx = x - ox, ry = (y - oy) * invq;
+      const sx =  rx * cos + ry * sin + sw / 2;
+      const sy = -rx * sin + ry * cos + sh / 2;
+      const ix = Math.floor(sx + 1e-6), iy = Math.floor(sy + 1e-6);
+      if (ix < 0 || iy < 0 || ix >= sw || iy >= sh) continue;
+      const si = (iy * sw + ix) * 4;
+      if (src[si + 3] < 8) continue;
+      const di = (y * dw + x) * 4;
+      dd[di] = src[si]; dd[di+1] = src[si+1]; dd[di+2] = src[si+2]; dd[di+3] = src[si+3];
+    }
+  }
+  octx.putImageData(dest, 0, 0);
+  out._cx = ox;
+  out._cy = oy;
+  return out;
+}
+
+function ss_outline(cnv, rgb, rad) {
+  if (!rad || rad < 1) return;
+  const ctx = cnv.getContext('2d');
+  const tmp = document.createElement('canvas');
+  tmp.width = cnv.width; tmp.height = cnv.height;
+  const tctx = tmp.getContext('2d');
+  tctx.imageSmoothingEnabled = false;
+  tctx.drawImage(cnv, 0, 0);
+  ctx.clearRect(0, 0, cnv.width, cnv.height);
+  const offs = [[-rad,0],[rad,0],[0,-rad],[0,rad],[-rad,-rad],[-rad,rad],[rad,-rad],[rad,rad]];
+  for (const [dx, dy] of offs) ctx.drawImage(tmp, dx, dy);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+  ctx.fillRect(0, 0, cnv.width, cnv.height);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(tmp, 0, 0);
+}
+
+function ss_bakeOne(img, j, angle) {
+  const s = j.recommended_scale || SS_SCALE;
+  const q = (j.y_squash == null) ? 1 : j.y_squash;
+  const n = j.slice_count;
+  const step = j.y_offset_per_slice_px || 1;
+  const w = j.slice_width, h = j.slice_height;
+  const diag = Math.ceil(Math.hypot(w, h)) + 2;
+  const pad = 2;
+  const outlineR = s; // 1 source px
+  const W = (diag + 2 * pad) * s + outlineR * 2 + 2;
+  const H = (diag + n * step + 2 * pad) * s + outlineR * 2 + 2;
+  const cnv = document.createElement('canvas');
+  cnv.width = W; cnv.height = H;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const ax = Math.floor(W / 2);
+  const ay = H - (Math.floor(diag / 2) + pad) * s - outlineR;
+  // pre-scale slices
+  for (let i = 0; i < n; i++) {
+    const sl = ss_sliceCanvas(img, j, i);
+    const rot = ss_rotateNN(sl, angle, q);
+    for (let k = 0; k < s; k++) {
+      const y = ay - (i * s + k) * step;
+      ctx.drawImage(rot, Math.round(ax - rot._cx), Math.round(y - rot._cy));
+    }
+  }
+  const outline = j.render_outline_rgb || [11, 21, 25];
+  ss_outline(cnv, outline, outlineR);
+  return { cnv, ax, ay };
+}
+
+function ss_bakeAll() {
+  const names = SS_NAMES.slice();
+  SS.cache = {};
+  const bakeName = (name, img, meta) => {
+    SS.cache[name] = new Array(SS_ANGLES);
+    for (let a = 0; a < SS_ANGLES; a++) {
+      const ang = (a / SS_ANGLES) * Math.PI * 2;
+      SS.cache[name][a] = ss_bakeOne(img, meta, ang);
+    }
+  };
+  for (const name of names) bakeName(name, SS.imgs[name], SS.meta[name]);
+  // revealed base uses the same meta as tile-revealed-1
+  bakeName('tile-revealed', SS.revealedBaseImg, SS.meta['tile-revealed-1']);
+}
+
+function ss_angleIndex(angle) {
+  const tau = Math.PI * 2;
+  let a = angle % tau;
+  if (a < 0) a += tau;
+  return Math.round(a / tau * SS_ANGLES) % SS_ANGLES;
+}
+
+function ss_blit(ctx, name, x, y, angle) {
+  const bank = SS.cache[name];
+  if (!bank) return;
+  const b = bank[ss_angleIndex(angle)];
+  if (!b) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(b.cnv, Math.round(x - b.ax), Math.round(y - b.ay));
+}
+
+function ss_effectiveZoom() {
+  return (TD.fitZoom || 1) * (TD.zoom || 1);
+}
+
+function ss_worldToScreen(c, r) {
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  const lx = (c - (TD.cols - 1) / 2) * pitch;
+  const ly = (r - (TD.rows - 1) / 2) * pitch;
+  const a = TD.yaw || 0;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  return [TD.camOX + (lx * cos - ly * sin), TD.camOY + (lx * sin + ly * cos)];
+}
+
+function ss_depth(c, r) {
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  const lx = (c - (TD.cols - 1) / 2) * pitch;
+  const ly = (r - (TD.rows - 1) / 2) * pitch;
+  const a = TD.yaw || 0;
+  return lx * Math.sin(a) + ly * Math.cos(a);
+}
+
+function ss_isSelfLandscape() {
+  const el = document.getElementById('screen-3d');
+  return !!(el && el.classList.contains('self-landscape'));
+}
+
+function ss_applySelfLandscape() {
+  const el = document.getElementById('screen-3d');
+  if (!el) return;
+  const portrait = window.innerHeight > window.innerWidth + 8;
+  el.classList.toggle('self-landscape', portrait && el.classList.contains('active'));
+}
+
+// Map a viewport (client) point into #screen-3d local CSS pixels.
+function ss_clientToLocal(clientX, clientY) {
+  if (!ss_isSelfLandscape()) return [clientX, clientY];
+  // 90° CCW (rotate(-90deg) translateX(-100%), origin top left):
+  // local (lx, ly) -> screen (ly, innerHeight - lx)
+  // so lx = innerHeight - clientY, ly = clientX
+  return [window.innerHeight - clientY, clientX];
+}
+
+function ss_eventToCanvas(clientX, clientY) {
+  const [lx, ly] = ss_clientToLocal(clientX, clientY);
+  const canvas = TD && TD.canvas;
+  // In self-landscape the canvas fills #screen-3d, which is at local (0,0)
+  if (ss_isSelfLandscape()) return [lx, ly];
+  const rect = canvas.getBoundingClientRect();
+  return [lx - rect.left, ly - rect.top];
+}
+
+function ss_fitZoom() {
+  if (!TD) return;
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  const [W, H] = td_viewSize();
+  const margin = 2.6 * pitch; // grass ring + trees
+  const halfW = (TD.cols * 0.5) * pitch + margin;
+  const halfH = (TD.rows * 0.5) * pitch + margin;
+  // worst-case yaw (45°) grows the AABB by sqrt(2)
+  const span = Math.hypot(halfW, halfH) * 2;
+  const treeH = 23 * (TD.stackScale || SS_SCALE) + 8;
+  const padX = 28;
+  const padY = 52 + 158;
+  const z = Math.min((W - padX) / span, (H - padY) / (span + treeH * 0.25));
+  TD.fitZoom = Math.max(0.22, Math.min(1.25, z));
+}
+
+function ss_viewStep(sdc, sdr) {
+  if (!TD) return;
+  const a = TD.yaw || 0;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  // screen right/down -> world col/row
+  const wdx = sdc * cos + sdr * sin;
+  const wdy = -sdc * sin + sdr * cos;
+  let dc = 0, dr = 0;
+  if (Math.abs(wdx) >= Math.abs(wdy)) dc = wdx > 0 ? 1 : (wdx < 0 ? -1 : 0);
+  else dr = wdy > 0 ? 1 : (wdy < 0 ? -1 : 0);
+  if (dc || dr) td_stepOnce(dc, dr);
+}
+
+function ss_genDecorations() {
+  const decos = [];
+  const R = TD.rows, C = TD.cols;
+  // Deterministic placements so a zone always looks the same
+  let seed = ((TD.zoneIndex || 0) + 1) * 12582917 + C * 97 + R * 13;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const spots = [];
+  for (let r = -3; r < R + 3; r++) {
+    for (let c = -3; c < C + 3; c++) {
+      if (c >= 0 && c < C && r >= 0 && r < R) continue;
+      const distC = c < 0 ? -c : (c >= C ? c - C + 1 : 0);
+      const distR = r < 0 ? -r : (r >= R ? r - R + 1 : 0);
+      const dist = Math.max(distC, distR);
+      if (dist !== 3) continue;
+      spots.push({ c, r, dist });
+    }
+  }
+  // A few pines and rocks just outside the grass ring, not a dense forest
+  const wantTree = Math.min(8, Math.max(5, Math.floor(spots.length * 0.28)));
+  const wantRock = Math.min(5, Math.max(3, Math.floor(spots.length * 0.16)));
+  const used = new Set();
+  const pick = (type, n) => {
+    let tries = 0;
+    while (n > 0 && tries < 80) {
+      tries++;
+      const s = spots[Math.floor(rnd() * spots.length)];
+      const k = s.c + ',' + s.r;
+      if (used.has(k)) continue;
+      used.add(k);
+      decos.push({ c: s.c, r: s.r, type, h: 0.9 + rnd() * 0.25, shade: rnd() > 0.45 });
+      n--;
+    }
+  };
+  pick('tree', wantTree);
+  pick('rock', wantRock);
+  return decos;
+}
+
+function ss_bindInput(canvas) {
+  TD._ptr = { down: false, dragged: false, x: 0, y: 0, yaw: 0, id: null };
+  const down = (cx, cy, id) => {
+    TD._ptr.down = true; TD._ptr.dragged = false; TD._ptr.id = id;
+    TD._ptr.x = cx; TD._ptr.y = cy; TD._ptr.yaw = TD.yaw || 0;
+  };
+  const move = (cx, cy) => {
+    if (!TD._ptr.down) return;
+    const dx = cx - TD._ptr.x;
+    const dy = cy - TD._ptr.y;
+    if (!TD._ptr.dragged && Math.hypot(dx, dy) > 8) TD._ptr.dragged = true;
+    if (TD._ptr.dragged) {
+      TD.yaw = TD._ptr.yaw + dx * 0.008;
+    }
+  };
+  const up = (cx, cy, ev) => {
+    if (!TD._ptr.down) return;
+    const dragged = TD._ptr.dragged;
+    TD._ptr.down = false;
+    if (dragged) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      return true; // swallowed
+    }
+    if (TD.dead || TD.won) return false;
+    const [px, py] = ss_eventToCanvas(cx, cy);
+    td_tapAt(px, py);
+    return true;
+  };
+
+  TD._onPtrDown = (e) => {
+    if (e.touches && e.touches.length >= 2) { TD._ptr.down = false; return; }
+    if (e.touches && e.touches.length === 1) {
+      e.preventDefault();
+      down(e.touches[0].clientX, e.touches[0].clientY, e.touches[0].identifier);
+    } else if (e.button === 0) {
+      down(e.clientX, e.clientY, 'mouse');
+    }
+  };
+  TD._onPtrMove = (e) => {
+    if (e.touches && e.touches.length === 2) { TD._ptr.down = false; return; }
+    if (e.touches && e.touches.length === 1 && TD._ptr.down) {
+      e.preventDefault();
+      const [lx, ly] = ss_clientToLocal(e.touches[0].clientX, e.touches[0].clientY);
+      const [sx, sy] = ss_clientToLocal(TD._ptr.x, TD._ptr.y);
+      // move() wants raw client for dx, but yaw should follow local landscape X
+      if (!TD._ptr.dragged && Math.hypot(e.touches[0].clientX - TD._ptr.x, e.touches[0].clientY - TD._ptr.y) > 8)
+        TD._ptr.dragged = true;
+      if (TD._ptr.dragged) TD.yaw = TD._ptr.yaw + (lx - sx) * 0.008;
+    } else if (TD._ptr.down && e.buttons) {
+      const [lx] = ss_clientToLocal(e.clientX, e.clientY);
+      const [sx] = ss_clientToLocal(TD._ptr.x, TD._ptr.y);
+      const [ly] = ss_clientToLocal(e.clientX, e.clientY);
+      const dy = e.clientY - TD._ptr.y;
+      const dx = e.clientX - TD._ptr.x;
+      if (!TD._ptr.dragged && Math.hypot(dx, dy) > 8) TD._ptr.dragged = true;
+      if (TD._ptr.dragged) TD.yaw = TD._ptr.yaw + (lx - sx) * 0.008;
+    }
+  };
+  TD._onPtrUp = (e) => {
+    if (TD._pinching) { TD._pinching = false; TD._ptr.down = false; return; }
+    let cx, cy;
+    if (e.changedTouches && e.changedTouches[0]) {
+      cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY;
+    } else { cx = e.clientX; cy = e.clientY; }
+    const handled = up(cx, cy, e);
+    if (handled && e.cancelable) e.preventDefault();
+  };
+
+  canvas.addEventListener('mousedown',  TD._onPtrDown);
+  window.addEventListener('mousemove',  TD._onPtrMove);
+  window.addEventListener('mouseup',    TD._onPtrUp);
+  canvas.addEventListener('touchstart', TD._onPtrDown, { passive: false });
+  canvas.addEventListener('touchmove',  TD._onPtrMove, { passive: false });
+  canvas.addEventListener('touchend',   TD._onPtrUp,   { passive: false });
+  canvas.addEventListener('touchcancel',TD._onPtrUp);
+}
+
+function ss_unbindInput() {
+  if (!TD || !TD.canvas) return;
+  const c = TD.canvas;
+  if (TD._onPtrDown) {
+    c.removeEventListener('mousedown',  TD._onPtrDown);
+    window.removeEventListener('mousemove', TD._onPtrMove);
+    window.removeEventListener('mouseup',   TD._onPtrUp);
+    c.removeEventListener('touchstart', TD._onPtrDown);
+    c.removeEventListener('touchmove',  TD._onPtrMove);
+    c.removeEventListener('touchend',   TD._onPtrUp);
+    c.removeEventListener('touchcancel',TD._onPtrUp);
+  }
+}
+
+function ss_setYawDir(dir) { if (TD) TD.yawDir = dir; }
+
+function ss_drawWorld(ctx) {
+  const yaw = TD.yaw || 0;
+  const items = [];
+
+  // Grass ring around the board (1 cell, plus corners at 2)
+  for (let r = -2; r < TD.rows + 2; r++) {
+    for (let c = -2; c < TD.cols + 2; c++) {
+      if (c >= 0 && c < TD.cols && r >= 0 && r < TD.rows) continue;
+      const distC = c < 0 ? -c : (c >= TD.cols ? c - TD.cols + 1 : 0);
+      const distR = r < 0 ? -r : (r >= TD.rows ? r - TD.rows + 1 : 0);
+      const dist = Math.max(distC, distR);
+      if (dist > 1 && !(dist === 2 && distC > 0 && distR > 0)) continue;
+      items.push({ kind: 'grass', c, r, depth: ss_depth(c, r), z: 0 });
+    }
+  }
+
+  for (let r = 0; r < TD.rows; r++) {
+    for (let c = 0; c < TD.cols; c++) {
+      items.push({ kind: 'tile', c, r, depth: ss_depth(c, r), z: 1 });
+    }
+  }
+  for (const d of (TD.decorations || [])) {
+    items.push({ kind: 'deco', c: d.c, r: d.r, d, depth: ss_depth(d.c, d.r), z: 4 });
+  }
+
+  // Character (interpolated)
+  const t = TD.charAnimT;
+  const aC = TD.charCol + (TD.charTCol - TD.charCol) * t;
+  const aR = TD.charRow + (TD.charTRow - TD.charRow) * t;
+  items.push({ kind: 'char', c: aC, r: aR, depth: ss_depth(aC, aR), z: 3 });
+
+  if (TD.path.length > 0 && !TD.dead && !TD.won) {
+    const [tc, tr] = TD.path[TD.path.length - 1];
+    items.push({ kind: 'target', c: tc, r: tr, depth: ss_depth(tc, tr) - 0.01, z: 1 });
+  }
+  if (TD.boom) items.push({ kind: 'boom', c: TD.boom.col, r: TD.boom.row, depth: ss_depth(TD.boom.col, TD.boom.row), z: 5 });
+
+  items.sort((a, b) => (a.depth - b.depth) || (a.z - b.z));
+
+  for (const it of items) {
+    if (it.kind === 'grass') ss_blit(ctx, 'grass-block', ...ss_worldToScreen(it.c, it.r), yaw);
+    else if (it.kind === 'tile') ss_drawTile(ctx, it.c, it.r, yaw);
+    else if (it.kind === 'deco') {
+      const name = it.d.type === 'rock' ? 'rock' : 'pine-tree';
+      ss_blit(ctx, name, ...ss_worldToScreen(it.c, it.r), yaw);
+    } else if (it.kind === 'char') ss_drawCharAt(ctx, it.c, it.r);
+    else if (it.kind === 'target') ss_drawTarget(ctx, it.c, it.r);
+    else if (it.kind === 'boom') ss_drawBoomAt(ctx, it.c, it.r);
+  }
+}
+
+function ss_drawTile(ctx, c, r, yaw) {
+  const cell = TD.board[r][c];
+  const [x, y] = ss_worldToScreen(c, r);
+  const isHere = (c === TD.charTCol && r === TD.charTRow);
+
+  if (cell.revealed && cell.mine) {
+    ss_blit(ctx, 'tile-revealed', x, y, yaw);
+    ss_blit(ctx, 'mine', x, y, yaw);
+  } else if (cell.revealed) {
+    const useStackedOne = cell.adj === 1 && !(profile && profile.colorblind);
+    ss_blit(ctx, useStackedOne ? 'tile-revealed-1' : 'tile-revealed', x, y, yaw);
+    if (cell.adj >= 1 && !useStackedOne) ss_drawNum(ctx, x, y, cell.adj);
+  } else {
+    ss_blit(ctx, 'tile-unrevealed', x, y, yaw);
+    if (cell.flagged) ss_blit(ctx, 'flag', x, y, yaw);
+  }
+
+  if (isHere && !cell.revealed) {
+    const [ar, ag, ab] = (TD.zone || ZONES[0]).atmRgb;
+    const p = SS_PITCH_SRC * (TD.stackScale || SS_SCALE) * 0.42;
+    ctx.save();
+    ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.85)`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(Math.round(x - p), Math.round(y - p), Math.round(p * 2), Math.round(p * 2));
+    ctx.restore();
+  }
+}
+
+function ss_drawNum(ctx, x, y, n) {
+  const pal = (profile && profile.colorblind) ? NUM_COLORS_CB : NUM_CLR;
+  const col = pal[n] || '#c9cfe4';
+  const fs = Math.round(11 * (TD.stackScale || SS_SCALE) / 4 * 2.2);
+  ctx.save();
+  ctx.font = `${fs}px "Press Start 2P", ui-monospace, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.imageSmoothingEnabled = false;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#0b1519';
+  ctx.lineJoin = 'miter';
+  // Sit the glyph on the top face of the 4-slice revealed tile
+  const top = y - 4 * (TD.stackScale || SS_SCALE) - 2;
+  ctx.strokeText(String(n), Math.round(x), Math.round(top));
+  ctx.fillStyle = col;
+  ctx.fillText(String(n), Math.round(x), Math.round(top));
+  ctx.restore();
+}
+
+function ss_drawTarget(ctx, tc, tr) {
+  const [x, y] = ss_worldToScreen(tc, tr);
+  const pulse = 0.55 + 0.45 * Math.sin(Date.now() * 0.006);
+  const [ar, ag, ab] = (TD.zone || ZONES[0]).atmRgb;
+  const p = SS_PITCH_SRC * (TD.stackScale || SS_SCALE) * 0.46;
+  ctx.save();
+  ctx.strokeStyle = `rgba(${ar},${ag},${ab},${pulse * 0.7})`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(Math.round(x - p), Math.round(y - p), Math.round(p * 2), Math.round(p * 2));
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4); ctx.stroke();
+  ctx.restore();
+}
+
+function ss_drawCharAt(ctx, aC, aR) {
+  const [cx, cy] = ss_worldToScreen(aC, aR);
+  const t = TD.charAnimT;
+  const moving = t < 1;
+  const arc = moving ? Math.sin(t * Math.PI) : 0;
+  const hopH = arc * 14;
+  const lean = moving ? (0.5 - t) * 0.15 : 0;
+  const idleBob = moving ? 0 : Math.sin((TD.idleTime || 0) * 2.1) * 2.2;
+  const va = TD.won ? (TD.victoryAnim || 0) : 0;
+  const victBounce = va > 0 ? Math.abs(Math.sin(va * Math.PI * 5)) * 20 * Math.max(0, 1 - va * 0.85) : 0;
+  const by = cy - hopH - idleBob - victBounce;
+  const sScale = 1 - arc * 0.38;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 2, 11 * sScale, 4 * sScale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0,0,0,${(0.42 * (1 - arc * 0.35)).toFixed(2)})`; ctx.fill();
+  if (TD_CHAR_BITMAP) {
+    const sprH = 36;
+    const sprW = Math.round(sprH * TD_CHAR_BITMAP.width / TD_CHAR_BITMAP.height);
+    ctx.translate(cx, by + 2 - sprH / 2);
+    ctx.rotate(lean);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(TD_CHAR_BITMAP, -sprW / 2, -sprH / 2, sprW, sprH);
+  }
+  ctx.restore();
+}
+
+function ss_drawBoomAt(ctx, c, r) {
+  const [cx, cy] = ss_worldToScreen(c, r);
+  const t = TD.boom.t, alpha = 1 - t, radius = t * 55;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(255,110,20,${alpha * 0.9})`; ctx.lineWidth = 2.5; ctx.stroke();
+  if (t < 0.4) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.65);
+    g.addColorStop(0, `rgba(255,240,180,${alpha * 1.8})`);
+    g.addColorStop(0.5, `rgba(255,80,10,${alpha})`);
+    g.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.beginPath(); ctx.arc(cx, cy, radius * 0.65, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function ss_drawLoading(ctx, W, H) {
+  ctx.fillStyle = 'rgba(11,21,25,0.55)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.font = '10px "Press Start 2P", ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f0e6d0';
+  ctx.strokeStyle = '#0b1519';
+  ctx.lineWidth = 3;
+  ctx.strokeText('LOADING', W / 2, H / 2);
+  ctx.fillText('LOADING', W / 2, H / 2);
+}
+
+
 function td_viewSize() {
   if (TD && TD.viewW != null && TD.viewH != null) return [TD.viewW, TD.viewH];
   const c = TD && TD.canvas;
@@ -4668,14 +5322,19 @@ function td_teardown() {
   if (!TD) return;
   if (TD.raf) cancelAnimationFrame(TD.raf);
   if (TD._onKeydown)     document.removeEventListener('keydown', TD._onKeydown);
-  if (TD._resizeFn)      window.removeEventListener('resize', TD._resizeFn);
+  if (TD._resizeFn) {
+    window.removeEventListener('resize', TD._resizeFn);
+    window.removeEventListener('orientationchange', TD._resizeFn);
+  }
+  ss_unbindInput();
   if (TD.canvas) {
-    if (TD._onClick)        TD.canvas.removeEventListener('click', TD._onClick);
     if (TD._onWheel)        TD.canvas.removeEventListener('wheel', TD._onWheel);
     if (TD._onTouchStart2)  TD.canvas.removeEventListener('touchstart', TD._onTouchStart2);
     if (TD._onTouchMove2)   TD.canvas.removeEventListener('touchmove', TD._onTouchMove2);
-    TD.canvas.removeEventListener('touchend', td_onCanvasTouch);
   }
+  const el = document.getElementById('screen-3d');
+  if (el) el.classList.remove('self-landscape');
+  document.body.classList.remove('td-self-land');
 }
 
 function launch3D() {
@@ -4704,6 +5363,7 @@ function launchZone(zoneIndex) {
     boom: null, decorations: [], lastTs: 0,
     particles: [], particleTimer: 0, idleTime: 0, victoryAnim: 0,
   };
+  window.TD = TD;
 
   for (let r = 0; r < zone.rows; r++) {
     TD.board[r] = [];
@@ -4728,9 +5388,12 @@ function launchZone(zoneIndex) {
   TD.ctx = canvas.getContext('2d');
 
   function resize() {
+    ss_applySelfLandscape();
+    document.body.classList.toggle('td-self-land', ss_isSelfLandscape());
+    const host = document.getElementById('screen-3d');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = (host && host.clientWidth)  || window.innerWidth;
+    const h = (host && host.clientHeight) || window.innerHeight;
     canvas.style.width  = w + 'px';
     canvas.style.height = h + 'px';
     canvas.width  = Math.round(w * dpr);
@@ -4740,18 +5403,16 @@ function launchZone(zoneIndex) {
     TD.viewH = h;
     TD.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     TD.ctx.imageSmoothingEnabled = false;
+    ss_fitZoom();
     td_snapCamera();
   }
   resize();
   TD._resizeFn = resize;
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
 
   TD._onKeydown = td_keydown;
   document.addEventListener('keydown', TD._onKeydown);
-
-  TD._onClick = td_onCanvasTap;
-  canvas.addEventListener('click', TD._onClick);
-  canvas.addEventListener('touchend', td_onCanvasTouch, { passive: false });
 
   // Clouds, birds, time, zoom
   TD.clouds    = td_initClouds(TD.viewW, TD.viewH);
@@ -4759,6 +5420,11 @@ function launchZone(zoneIndex) {
   TD.birdTimer = 3 + Math.random() * 6;
   TD.dayTime   = 5; // start mid-morning (sun already up)
   TD.zoom      = 1.0;
+  TD.yaw       = Math.PI * 0.125;
+  TD.yawDir    = 0;
+  TD.stackScale = SS_SCALE;
+  ss_bindInput(canvas);
+  ss_preload().then(() => { if (TD) { ss_fitZoom(); td_snapCamera(); } }).catch(err => console.error(err));
 
   // Scroll-wheel zoom
   TD._onWheel = (e) => {
@@ -4809,6 +5475,7 @@ function launchZone(zoneIndex) {
 function quit3D() {
   td_teardown();
   TD = null;
+  window.TD = null;
   goTo('setup');
   buildWorldMap();
 }
@@ -4816,6 +5483,9 @@ function quit3D() {
 // ── DECORATIONS ───────────────────────────
 
 function td_genDecorations() {
+  return ss_genDecorations();
+}
+function td_genDecorations_iso() {
   const decos = [];
   const { rows: R, cols: C, zone, trail } = TD;
   const decoType = zone ? zone.decoType : 'tree';
@@ -4977,14 +5647,11 @@ function td_genHeightMap(rows, cols, zoneIndex) {
 // ── ISO MATH ──────────────────────────────
 
 function td_snapCamera() {
-  const canvas = TD.canvas;
-  const { rows: R, cols: C } = TD;
-  const cC = (C - 1) * 0.5, rC = (R - 1) * 0.5;
-  // Push camera lower for tall-terrain zones so cliffs aren't cropped
-  const camYFrac = [0.36, 0.50, 0.36, 0.34, 0.42][TD.zoneIndex || 0] || 0.36;
   const [vW, vH] = td_viewSize();
-  TD.camOX = vW * 0.5  - (cC - rC) * ISO.HW;
-  TD.camOY = vH * camYFrac - (cC + rC + 1) * ISO.HH;
+  // Sit the board in the gap between the HUD and the on-screen controller
+  const top = 52, bot = 158;
+  TD.camOX = vW * 0.5;
+  TD.camOY = top + (Math.max(80, vH - top - bot) * 0.58);
   TD.camTOX = TD.camOX; TD.camTOY = TD.camOY;
 }
 
@@ -4994,15 +5661,19 @@ function td_targetCamera() {
 
 // Screen (px,py) → nearest tile (col, row); accounts for canvas zoom
 function td_screenToTile(px, py) {
-  const { HW, HH } = ISO;
-  const zoom = TD.zoom || 1;
+  const zoom = ss_effectiveZoom();
   const [W, H] = td_viewSize();
   const wx = (px - W * 0.5) / zoom + W * 0.5;
   const wy = (py - H * 0.5) / zoom + H * 0.5;
-  const adjX = wx - TD.camOX;
-  const adjY = wy - TD.camOY - HH;
-  const c = Math.round((adjX / HW + adjY / HH) / 2);
-  const r = Math.round((adjY / HH - adjX / HW) / 2);
+  const rx = wx - TD.camOX;
+  const ry = wy - TD.camOY;
+  const a = TD.yaw || 0;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  const lx =  rx * cos + ry * sin;
+  const ly = -rx * sin + ry * cos;
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  const c = Math.round(lx / pitch + (TD.cols - 1) / 2);
+  const r = Math.round(ly / pitch + (TD.rows - 1) / 2);
   return [c, r];
 }
 
@@ -5119,6 +5790,8 @@ function td_loop(ts) {
   else TD.idleTime = 0;
   if (TD.won) TD.victoryAnim = Math.min(1, (TD.victoryAnim||0) + dt*1.4);
 
+  if (TD.yawDir) TD.yaw += TD.yawDir * dt * 1.85;
+
   td_render();
 }
 
@@ -5151,10 +5824,12 @@ function td_tapAt(px, py) {
 function td_keydown(e) {
   if (!TD) return;
   switch (e.key) {
-    case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); td_stepOnce( 0,-1); break;
-    case 'ArrowDown':  case 's': case 'S': e.preventDefault(); td_stepOnce( 0, 1); break;
-    case 'ArrowLeft':  case 'a': case 'A': e.preventDefault(); td_stepOnce(-1, 0); break;
-    case 'ArrowRight': case 'd': case 'D': e.preventDefault(); td_stepOnce( 1, 0); break;
+    case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); ss_viewStep( 0,-1); break;
+    case 'ArrowDown':  case 's': case 'S': e.preventDefault(); ss_viewStep( 0, 1); break;
+    case 'ArrowLeft':  case 'a': case 'A': e.preventDefault(); ss_viewStep(-1, 0); break;
+    case 'ArrowRight': case 'd': case 'D': e.preventDefault(); ss_viewStep( 1, 0); break;
+    case 'q': case 'Q': e.preventDefault(); TD.yaw -= Math.PI / 16; break;
+    case 'e': case 'E': e.preventDefault(); TD.yaw += Math.PI / 16; break;
     case ' ': case 'Enter': e.preventDefault(); tdReveal(); break;
     case 'f': case 'F': e.preventDefault(); tdFlag(); break;
   }
@@ -5175,8 +5850,8 @@ let _dpadTimer = null;
 function dpadStart(dc, dr) {
   if (!TD) return;
   TD.path = [];
-  td_stepOnce(dc, dr);
-  _dpadTimer = setInterval(() => td_stepOnce(dc, dr), 260);
+  ss_viewStep(dc, dr);
+  _dpadTimer = setInterval(() => ss_viewStep(dc, dr), 260);
 }
 function dpadEnd() {
   if (_dpadTimer) { clearInterval(_dpadTimer); _dpadTimer = null; }
@@ -5188,8 +5863,11 @@ function dpadEnd() {
   const DEAD = 12; // px dead zone before triggering movement
 
   function _getXY(e) {
-    if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    return { x: e.clientX, y: e.clientY };
+    let cx, cy;
+    if (e.touches && e.touches.length > 0) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+    else { cx = e.clientX; cy = e.clientY; }
+    const [x, y] = ss_clientToLocal(cx, cy);
+    return { x, y };
   }
 
   function _setNub(dx, dy) {
@@ -5414,52 +6092,25 @@ function td_render() {
   const [W, H] = td_viewSize();
 
   ctx.clearRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = false;
 
   // ── Ambient sky, sun, moon — always full canvas (outside zoom) ──
   td_drawAmbient(ctx, W, H);
 
+  if (!SS.ready) {
+    ss_drawLoading(ctx, W, H);
+    return;
+  }
+
   // ── Apply zoom centered on canvas midpoint ──
-  const zoom = TD.zoom || 1;
+  const zoom = ss_effectiveZoom();
   ctx.save();
   ctx.translate(W * 0.5, H * 0.5);
   ctx.scale(zoom, zoom);
   ctx.translate(-W * 0.5, -H * 0.5);
+  ctx.imageSmoothingEnabled = false;
 
-  // ── Build painter-sorted render list ──
-  const GM = 5;
-  const items = [];
-  for (let r = -GM; r < TD.rows + GM; r++) {
-    for (let c = -GM; c < TD.cols + GM; c++) {
-      const onGrid = c >= 0 && c < TD.cols && r >= 0 && r < TD.rows;
-      if (onGrid)
-        items.push({ kind: 'tile',   c, r, key: c + r });
-      else
-        items.push({ kind: 'ground', c, r, key: c + r - 0.01 });
-    }
-  }
-  for (const d of TD.decorations)
-    items.push({ kind: 'deco', c: d.c, r: d.r, d, key: d.c + d.r });
-  if (TD.trail) {
-    for (const t of TD.trail)
-      items.push({ kind: 'trail', c: t.c, r: t.r, t, key: t.c + t.r - 0.005 });
-  }
-  items.sort((a, b) => a.key - b.key);
-
-  for (const item of items) {
-    if      (item.kind === 'tile')   td_drawTile(ctx, item.c, item.r);
-    else if (item.kind === 'deco')   td_drawDeco(ctx, item.d);
-    else if (item.kind === 'trail')  td_drawTrailTile(ctx, item.t);
-    else                             td_drawGroundTile(ctx, item.c, item.r);
-  }
-
-  // Numbers, character, effects — all inside zoom transform
-  td_drawNumbers(ctx);
-  td_drawChar(ctx);
-  if (TD.boom) td_drawBoom(ctx);
-  if (TD.path.length > 0 && !TD.dead && !TD.won) {
-    const [tc, tr] = TD.path[TD.path.length - 1];
-    td_drawMoveTarget(ctx, tc, tr);
-  }
+  ss_drawWorld(ctx);
 
   ctx.restore();
 
