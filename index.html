@@ -2487,6 +2487,39 @@
       overflow: hidden;
     }
     body.td-self-land { overflow: hidden; }
+
+    /* Landscape 3D: slim transparent controller split to the sides so the board can fill the middle */
+    #screen-3d.td-land .n64 {
+      left: 0; right: 0; bottom: 8px;
+      transform: none;
+      width: auto; min-width: 0;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 8px; gap: 0;
+      background: transparent;
+      border: none; box-shadow: none;
+      border-radius: 0;
+      pointer-events: none;
+    }
+    #screen-3d.td-land .n64::before,
+    #screen-3d.td-land .n64::after { display: none; }
+    #screen-3d.td-land .n64-stick-ring {
+      pointer-events: all;
+      width: 70px; height: 70px;
+      background: radial-gradient(circle at 36% 30%, rgba(56,56,56,.5), rgba(16,16,16,.38));
+      border: 2px solid rgba(11,21,25,.7);
+      box-shadow: inset 0 3px 7px rgba(0,0,0,.45);
+    }
+    #screen-3d.td-land .n64-nub {
+      width: 36px; height: 36px;
+      background: radial-gradient(circle at 32% 26%, rgba(104,104,104,.8), rgba(44,44,44,.7));
+    }
+    #screen-3d.td-land .n64-btns { pointer-events: all; }
+    #screen-3d.td-land .n64-btn-a { width: 44px; height: 44px; font-size: .55rem; }
+    #screen-3d.td-land .n64-btn-b { width: 38px; height: 38px; font-size: .5rem; }
+    #screen-3d.td-land .td-hint { display: none; }
+    #screen-3d.td-land .td-pup-hud { bottom: auto; top: 50px; right: 8px; }
+
     .td-rot {
       pointer-events: all;
       display: flex;
@@ -4722,6 +4755,8 @@ const SS_NAMES = ['grass-block','tile-unrevealed','tile-revealed-1','pine-tree',
 const SS_ANGLES = 32;
 const SS_SCALE  = 4;
 const SS_PITCH_SRC = 16; // tile footprint in source px
+const SS_SQUASH = 0.62; // board-level 3/4 camera (same idea as BATTLE towers)
+const SS_SKIRT  = 28;   // dirt side height under the island, in un-zoomed px
 
 const SS = {
   ready: false,
@@ -4867,7 +4902,7 @@ function ss_outline(cnv, rgb, rad) {
 
 function ss_bakeOne(img, j, angle) {
   const s = j.recommended_scale || SS_SCALE;
-  const q = (j.y_squash == null) ? 1 : j.y_squash;
+  const q = SS_SQUASH; // screen-space squash AFTER rotate; lift stays unsquashed
   const n = j.slice_count;
   const step = j.y_offset_per_slice_px || 1;
   const w = j.slice_width, h = j.slice_height;
@@ -4937,15 +4972,14 @@ function ss_worldToScreen(c, r) {
   const ly = (r - (TD.rows - 1) / 2) * pitch;
   const a = TD.yaw || 0;
   const cos = Math.cos(a), sin = Math.sin(a);
-  return [TD.camOX + (lx * cos - ly * sin), TD.camOY + (lx * sin + ly * cos)];
+  const rx = lx * cos - ly * sin;
+  const ry = (lx * sin + ly * cos) * SS_SQUASH;
+  return [TD.camOX + rx, TD.camOY + ry];
 }
 
 function ss_depth(c, r) {
-  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
-  const lx = (c - (TD.cols - 1) / 2) * pitch;
-  const ly = (r - (TD.rows - 1) / 2) * pitch;
-  const a = TD.yaw || 0;
-  return lx * Math.sin(a) + ly * Math.cos(a);
+  // Painter's algorithm: farther = smaller screen y (after 3/4 squash)
+  return ss_worldToScreen(c, r)[1];
 }
 
 function ss_isSelfLandscape() {
@@ -4978,20 +5012,44 @@ function ss_eventToCanvas(clientX, clientY) {
   return [lx - rect.left, ly - rect.top];
 }
 
+function ss_playRect() {
+  const [W, H] = td_viewSize();
+  const land = W > H + 8;
+  if (land) {
+    // Side-mounted slim controller: stick on the left, A/B on the right
+    return { x: 84, y: 44, w: W - 84 - 98, h: H - 44 - 8, land: true };
+  }
+  return { x: 14, y: 50, w: W - 28, h: H - 50 - 126, land: false };
+}
+
 function ss_fitZoom() {
   if (!TD) return;
   const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  const s = TD.stackScale || SS_SCALE;
+  // Island = board + 1-tile grass ring (tile centres ± 0.5, plus one grass)
+  const a = (TD.cols / 2 + 1) * pitch;
+  const b = (TD.rows / 2 + 1) * pitch;
+  const maxHalfW = Math.hypot(a, b);          // worst yaw
+  const maxHalfH = maxHalfW * SS_SQUASH;
+  const tileTop = 11 * s;                     // grass-block height (full, unsquashed lift)
+  const pad = 8;
+  const play = ss_playRect();
+  const bw = maxHalfW * 2 + pad * 2;
+  const bh = maxHalfH * 2 + tileTop + SS_SKIRT + pad * 2;
+  const z = Math.max(0.16, Math.min(2.4, Math.min(play.w / bw, play.h / bh)));
+  TD.fitZoom = z;
+
+  const relMinY = -maxHalfH - tileTop;
+  const relMaxY =  maxHalfH + SS_SKIRT;
+  const visCy = (relMinY + relMaxY) / 2;
   const [W, H] = td_viewSize();
-  const margin = 2.6 * pitch; // grass ring + trees
-  const halfW = (TD.cols * 0.5) * pitch + margin;
-  const halfH = (TD.rows * 0.5) * pitch + margin;
-  // worst-case yaw (45°) grows the AABB by sqrt(2)
-  const span = Math.hypot(halfW, halfH) * 2;
-  const treeH = 23 * (TD.stackScale || SS_SCALE) + 8;
-  const padX = 28;
-  const padY = 52 + 158;
-  const z = Math.min((W - padX) / span, (H - padY) / (span + treeH * 0.25));
-  TD.fitZoom = Math.max(0.22, Math.min(1.25, z));
+  const targetX = play.x + play.w / 2;
+  const targetY = play.y + play.h / 2;
+  // Invert the zoom-around-canvas-centre transform so the island fills the play rect
+  TD.camOX = (targetX - (1 - z) * W / 2) / z;
+  TD.camOY = (targetY - (1 - z) * H / 2) / z - visCy;
+  TD.camTOX = TD.camOX;
+  TD.camTOY = TD.camOY;
 }
 
 function ss_viewStep(sdc, sdr) {
@@ -5138,6 +5196,80 @@ function ss_unbindInput() {
 
 function ss_setYawDir(dir) { if (TD) TD.yawDir = dir; }
 
+function ss_shadow(ctx, x, y, rx, ry, a) {
+  ctx.save();
+  ctx.fillStyle = `rgba(11,21,25,${a})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 1, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(11,21,25,${Math.min(0.55, a * 1.4)})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 1, rx * 0.58, ry * 0.58, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function ss_drawIslandSkirt(ctx) {
+  const C = TD.cols, R = TD.rows;
+  const pts = [
+    ss_worldToScreen(-1.5,     -1.5),
+    ss_worldToScreen(C + 0.5,  -1.5),
+    ss_worldToScreen(C + 0.5,   R + 0.5),
+    ss_worldToScreen(-1.5,      R + 0.5),
+  ];
+  const h = SS_SKIRT;
+  const edges = [];
+  for (let i = 0; i < 4; i++) {
+    const a = pts[i], b = pts[(i + 1) % 4];
+    edges.push({ a, b, midY: (a[1] + b[1]) / 2, midX: (a[0] + b[0]) / 2 });
+  }
+  const y0 = Math.min(...pts.map(p => p[1]));
+  const y1 = Math.max(...pts.map(p => p[1]));
+  edges.sort((e, f) => e.midY - f.midY);
+  for (const e of edges) {
+    const t = (e.midY - y0) / Math.max(1, y1 - y0);
+    const shade = 0.22 + t * 0.38;
+    const r = Math.round(42 * (1 - shade * 0.45));
+    const g = Math.round(32 * (1 - shade * 0.45));
+    const b = Math.round(20 * (1 - shade * 0.4));
+    ctx.beginPath();
+    ctx.moveTo(e.a[0], e.a[1]);
+    ctx.lineTo(e.b[0], e.b[1]);
+    ctx.lineTo(e.b[0], e.b[1] + h);
+    ctx.lineTo(e.a[0], e.a[1] + h);
+    ctx.closePath();
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fill();
+    ctx.strokeStyle = '#0b1519';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  // thin top lip so the plateau edge reads clearly under the grass
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.strokeStyle = '#0b1519';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function ss_strokeTile(ctx, c, r, style, width) {
+  const q = [
+    ss_worldToScreen(c - 0.5, r - 0.5),
+    ss_worldToScreen(c + 0.5, r - 0.5),
+    ss_worldToScreen(c + 0.5, r + 0.5),
+    ss_worldToScreen(c - 0.5, r + 0.5),
+  ];
+  ctx.beginPath();
+  ctx.moveTo(q[0][0], q[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]);
+  ctx.closePath();
+  ctx.strokeStyle = style;
+  ctx.lineWidth = width;
+  ctx.stroke();
+}
+
 function ss_drawWorld(ctx) {
   const yaw = TD.yaw || 0;
   const items = [];
@@ -5177,6 +5309,20 @@ function ss_drawWorld(ctx) {
 
   items.sort((a, b) => (a.depth - b.depth) || (a.z - b.z));
 
+  ss_drawIslandSkirt(ctx);
+
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE);
+  for (const it of items) {
+    const [x, y] = ss_worldToScreen(it.c, it.r);
+    if (it.kind === 'grass' || it.kind === 'tile')
+      ss_shadow(ctx, x, y, pitch * 0.46, pitch * 0.46 * SS_SQUASH, 0.28);
+    else if (it.kind === 'deco')
+      ss_shadow(ctx, x, y,
+        pitch * (it.d.type === 'rock' ? 0.42 : 0.55),
+        pitch * (it.d.type === 'rock' ? 0.32 : 0.38) * SS_SQUASH,
+        0.34);
+  }
+
   for (const it of items) {
     if (it.kind === 'grass') ss_blit(ctx, 'grass-block', ...ss_worldToScreen(it.c, it.r), yaw);
     else if (it.kind === 'tile') ss_drawTile(ctx, it.c, it.r, yaw);
@@ -5208,11 +5354,8 @@ function ss_drawTile(ctx, c, r, yaw) {
 
   if (isHere && !cell.revealed) {
     const [ar, ag, ab] = (TD.zone || ZONES[0]).atmRgb;
-    const p = SS_PITCH_SRC * (TD.stackScale || SS_SCALE) * 0.42;
     ctx.save();
-    ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.85)`;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(Math.round(x - p), Math.round(y - p), Math.round(p * 2), Math.round(p * 2));
+    ss_strokeTile(ctx, c, r, `rgba(${ar},${ag},${ab},0.9)`, 2);
     ctx.restore();
   }
 }
@@ -5241,13 +5384,12 @@ function ss_drawTarget(ctx, tc, tr) {
   const [x, y] = ss_worldToScreen(tc, tr);
   const pulse = 0.55 + 0.45 * Math.sin(Date.now() * 0.006);
   const [ar, ag, ab] = (TD.zone || ZONES[0]).atmRgb;
-  const p = SS_PITCH_SRC * (TD.stackScale || SS_SCALE) * 0.46;
   ctx.save();
-  ctx.strokeStyle = `rgba(${ar},${ag},${ab},${pulse * 0.7})`;
-  ctx.lineWidth = 2;
   ctx.setLineDash([4, 4]);
-  ctx.strokeRect(Math.round(x - p), Math.round(y - p), Math.round(p * 2), Math.round(p * 2));
+  ss_strokeTile(ctx, tc, tr, `rgba(${ar},${ag},${ab},${pulse * 0.75})`, 2);
   ctx.setLineDash([]);
+  ctx.strokeStyle = `rgba(${ar},${ag},${ab},${pulse * 0.7})`;
+  ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4); ctx.stroke();
   ctx.restore();
@@ -5333,7 +5475,7 @@ function td_teardown() {
     if (TD._onTouchMove2)   TD.canvas.removeEventListener('touchmove', TD._onTouchMove2);
   }
   const el = document.getElementById('screen-3d');
-  if (el) el.classList.remove('self-landscape');
+  if (el) { el.classList.remove('self-landscape'); el.classList.remove('td-land'); }
   document.body.classList.remove('td-self-land');
 }
 
@@ -5391,6 +5533,11 @@ function launchZone(zoneIndex) {
     ss_applySelfLandscape();
     document.body.classList.toggle('td-self-land', ss_isSelfLandscape());
     const host = document.getElementById('screen-3d');
+    if (host) {
+      const lw = host.clientWidth || window.innerWidth;
+      const lh = host.clientHeight || window.innerHeight;
+      host.classList.toggle('td-land', lw > lh + 8);
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = (host && host.clientWidth)  || window.innerWidth;
     const h = (host && host.clientHeight) || window.innerHeight;
@@ -5647,12 +5794,7 @@ function td_genHeightMap(rows, cols, zoneIndex) {
 // ── ISO MATH ──────────────────────────────
 
 function td_snapCamera() {
-  const [vW, vH] = td_viewSize();
-  // Sit the board in the gap between the HUD and the on-screen controller
-  const top = 52, bot = 158;
-  TD.camOX = vW * 0.5;
-  TD.camOY = top + (Math.max(80, vH - top - bot) * 0.58);
-  TD.camTOX = TD.camOX; TD.camTOY = TD.camOY;
+  ss_fitZoom();
 }
 
 function td_targetCamera() {
@@ -5666,7 +5808,7 @@ function td_screenToTile(px, py) {
   const wx = (px - W * 0.5) / zoom + W * 0.5;
   const wy = (py - H * 0.5) / zoom + H * 0.5;
   const rx = wx - TD.camOX;
-  const ry = wy - TD.camOY;
+  const ry = (wy - TD.camOY) / SS_SQUASH;
   const a = TD.yaw || 0;
   const cos = Math.cos(a), sin = Math.sin(a);
   const lx =  rx * cos + ry * sin;
