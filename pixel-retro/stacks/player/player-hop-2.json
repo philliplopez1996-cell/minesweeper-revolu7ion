@@ -1,0 +1,61 @@
+{
+ "name": "player-hop-2",
+ "file": "player-hop-2-slices.png",
+ "layout": "horizontal strip, one slice per frame",
+ "order": "bottom_to_top (frame 0 = lowest slice)",
+ "slice_width": 24,
+ "slice_height": 24,
+ "slice_count": 24,
+ "strip_size": [
+  576,
+  24
+ ],
+ "y_offset_per_slice_px": 1,
+ "y_offset_note": "source px; at scale 4 lift 4 px per slice (draw each slice 4x at 1 px steps for solid walls)",
+ "recommended_scale": 4,
+ "y_squash": 0.62,
+ "y_squash_note": "the game (index.html ss_bakeOne, SS_SQUASH = 0.62) squashes EVERY Minesweeper stack after rotating; previews here use the same 0.62 so the player matches the board",
+ "pivot": [
+  12.0,
+  12.0
+ ],
+ "pivot_note": "rotate every slice about its centre; slice 0 centre = the ground point under the player",
+ "forward": "+y in slice space (down in each slice image) = the way the face looks",
+ "forward_angle_deg": 0,
+ "forward_note": "at rotation 0 the player faces the camera (south). To face world direction (dc, dr) blit at yaw - Math.atan2(dc, dr)",
+ "render_outline_rgb": [
+  11,
+  21,
+  25
+ ],
+ "palette": "colours sampled from Phill's player-ref.jpg (cream, red, brown, green face, blue/cream flag)",
+ "footprint_px": [
+  24,
+  24
+ ],
+ "source": " /workspace/team/Mr-Beanz/minesweeper-player-ref/player-ref.jpg",
+ "set": "minesweeper",
+ "kind": "player",
+ "animation": "hop",
+ "frame_index": 2,
+ "frame_count": 6,
+ "fps": 12,
+ "loop": false,
+ "revision": "phill-v1",
+ "frame_order": [
+  "player-hop-0",
+  "player-hop-1",
+  "player-hop-2",
+  "player-hop-3",
+  "player-hop-4",
+  "player-hop-5"
+ ],
+ "pose": {
+  "lift": 1,
+  "air": 3,
+  "hands": 7
+ },
+ "empty_slices_note": "every frame has the same slice count; unused slices stay empty (top headroom for bob/hop; bottom slices of airborne hop frames = pose.air)",
+ "hop_note": "one-shot hop (loop false) for a victory pose; set loop true for the win bounce. Lift is baked in (pose.air slices) \u2014 drop the engine hop arc when using these frames.",
+ "loop_for_victory": true
+}

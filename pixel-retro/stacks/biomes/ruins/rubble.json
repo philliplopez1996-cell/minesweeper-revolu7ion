@@ -1,0 +1,36 @@
+{
+ "name": "rubble",
+ "file": "rubble-slices.png",
+ "layout": "horizontal strip, one slice per frame",
+ "order": "bottom_to_top (frame 0 = lowest slice)",
+ "slice_width": 16,
+ "slice_height": 14,
+ "slice_count": 6,
+ "strip_size": [
+  96,
+  14
+ ],
+ "y_offset_per_slice_px": 1,
+ "y_offset_note": "in source pixels; multiply by your draw scale (e.g. scale 4 -> 4 px per slice, draw each slice 4x at 1 px steps to fill gaps)",
+ "recommended_scale": 4,
+ "y_squash": 1.0,
+ "y_squash_note": "optional: scale each rotated slice vertically by this before drawing (lower camera; 1.0 = classic top-down stack)",
+ "pivot": [
+  8.0,
+  7.0
+ ],
+ "pivot_note": "rotate every slice about its centre; the stack base sits at the pivot of slice 0",
+ "set": "minesweeper-biomes",
+ "zone": "ruins",
+ "kind": "prop",
+ "palette": "minesweeper pixel-retro (pxlib.C)",
+ "render_outline_rgb": [
+  11,
+  21,
+  25
+ ],
+ "footprint_px": [
+  16,
+  14
+ ]
+}

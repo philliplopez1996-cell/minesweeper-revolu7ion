@@ -14,7 +14,7 @@
  "y_offset_note": "in source pixels; multiply by your draw scale (e.g. scale 4 -> 4 px per slice, draw each slice 4x at 1 px steps to fill gaps)",
  "recommended_scale": 4,
  "y_squash": 1.0,
- "y_squash_note": "optional: scale each rotated slice vertically by this before drawing (lower camera; 1.0 = classic top-down stack)",
+ "y_squash_note": "authored at squash 1.0; the game applies SS_SQUASH = 0.62 at render time",
  "pivot": [
   8.0,
   8.0
@@ -22,7 +22,7 @@
  "pivot_note": "rotate every slice about its centre; the stack base sits at the pivot of slice 0",
  "set": "minesweeper",
  "kind": "prop",
- "palette": "minesweeper pixel-retro (pxlib.C)",
+ "palette": "Phill player-ref: black pole, blue (0,0,244) and cream (251,230,201) cloth",
  "render_outline_rgb": [
   11,
   21,
@@ -31,5 +31,7 @@
  "footprint_px": [
   16,
   16
- ]
+ ],
+ "source": "/workspace/team/Mr-Beanz/minesweeper-player-ref/player-ref.jpg",
+ "note": "Phill's flag; replaces the official v1 red flag as the tile marker in 3D World and in 2D (see flag-2d.png)"
 }

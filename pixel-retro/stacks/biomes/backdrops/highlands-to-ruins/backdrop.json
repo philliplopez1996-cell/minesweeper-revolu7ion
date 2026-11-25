@@ -1,0 +1,43 @@
+{
+ "zone": "highlands",
+ "shows": "ruins",
+ "size": [
+  844,
+  390
+ ],
+ "layers": [
+  {
+   "file": "sky.png",
+   "order": 0,
+   "parallax": 0.04,
+   "anchor": "fill",
+   "note": "farthest; almost still when the camera pans"
+  },
+  {
+   "file": "far-island.png",
+   "order": 1,
+   "parallax": 0.14,
+   "anchor": [
+    619,
+    30
+   ],
+   "size": [
+    146,
+    162
+   ],
+   "note": "next biome island; moves a little when the camera pans"
+  },
+  {
+   "file": "haze.png",
+   "order": 2,
+   "parallax": 0.08,
+   "anchor": "fill",
+   "note": "atmospheric veil; sits over the far island, under the playfield"
+  }
+ ],
+ "parallax_note": "Each layer is drawn at its anchor, then shifted by (camera_pan_x * parallax, camera_pan_y * parallax). Smaller parallax = farther. The playfield itself is parallax 1.0 and is not part of this plate. anchor=\"fill\" layers are sized to the viewport; others are placed at anchor [x,y] top-left.",
+ "recommended_viewport": [
+  844,
+  390
+ ]
+}
