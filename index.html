@@ -1131,11 +1131,20 @@
     .dr-lb-tab.act { background: var(--surf2); color: var(--lime); box-shadow: inset 0 1px 0 rgba(255,255,255,.05); }
 
     /* ── 3D WORLD ──────────────────────────────────────────── */
-    #screen-3d.active {
+    #screen-3d.active, #screen-world.active {
       height: 100dvh; overflow: hidden;
       display: flex; flex-direction: column; align-items: stretch;
     }
-    #iso-canvas { display: block; width: 100%; flex: 1; touch-action: none; cursor: crosshair; image-rendering: pixelated; image-rendering: crisp-edges; }
+    #iso-canvas, #wm-canvas { display: block; width: 100%; flex: 1; touch-action: none; cursor: grab; image-rendering: pixelated; image-rendering: crisp-edges; }
+    #iso-canvas:active, #wm-canvas:active { cursor: grabbing; }
+    .wm-hint {
+      position: fixed; left: 0; right: 0; bottom: 8px;
+      text-align: center; z-index: 10; pointer-events: none;
+      font-family: var(--font-u); font-size: 7px; letter-spacing: 0.04em;
+      color: var(--cream); text-shadow: 1px 1px 0 var(--ink);
+      text-transform: uppercase;
+    }
+    .wm-open-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 8px; }
 
     .td-hud {
       position: fixed; top: 0; left: 0; right: 0;
@@ -2472,7 +2481,7 @@
 
 
     /* ── Sprite-stack 3D World ── */
-    #screen-3d.self-landscape {
+    #screen-3d.self-landscape, #screen-world.self-landscape {
       position: fixed;
       top: 0;
       left: 0;
@@ -2752,6 +2761,19 @@
 </div>
 
 <!-- ══════════════════════════════════════════
+     SCREEN: WORLD MAP
+══════════════════════════════════════════ -->
+<div id="screen-world" class="screen">
+  <canvas id="wm-canvas"></canvas>
+  <div class="td-hud">
+    <button class="td-hud-back" onclick="closeWorldMap()">&#8592; Exit</button>
+    <div class="td-zone-label">WORLD MAP</div>
+    <button class="td-hud-back" id="wm-play-btn" type="button" onclick="wm_playCurrent()" style="visibility:hidden">PLAY</button>
+  </div>
+  <div class="wm-hint" id="wm-hint">DRAG TO LOOK AROUND · TAP AN ISLAND TO WALK THERE</div>
+</div>
+
+<!-- ══════════════════════════════════════════
      OVERLAY
 ══════════════════════════════════════════ -->
 <div class="overlay" id="overlay">
@@ -2912,6 +2934,7 @@ let profile = {}; // loaded in INIT
 function goTo(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + screenId).classList.add('active');
+  if (typeof ss_applySelfLandscape === 'function') ss_applySelfLandscape();
 }
 
 // ══════════════════════════════════════════
@@ -3636,6 +3659,7 @@ function switchMode(mode) {
   document.getElementById('panel-3d').style.display        = is3d   ? '' : 'none';
   document.getElementById('screen-setup').classList.toggle('mode-3d', is3d);
   if (is3d) buildWorldMap();
+  else if (typeof WM !== 'undefined' && WM) wm_teardown();
 }
 
 function quitGame() {
@@ -4637,6 +4661,7 @@ function triggerWinReveal() {
 // INIT
 // ══════════════════════════════════════════
 profile = loadProfile();
+window.profile = profile;
 applyTheme(profile.theme);
 renderProfileCorner();
 buildPupSelector('regular');
@@ -4660,86 +4685,593 @@ function hexToRgba(hex, a) {
   return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
 }
 
-function buildWorldMap() {
+
+// ── World map (floating islands; Phill walks between them) ─────────
+let WM = null;
+window.WM = null;
+
+const WM_KITS = {
+  grasslands: { ground:'grass-tile', edge:'grass-edge', props:['oak','bush','flowers'] },
+  highlands:  { ground:'rocky-tile', edge:'rocky-edge', props:['pine-variant','heather','big-boulder'] },
+  ruins:      { ground:'stone-tile', edge:'stone-edge', props:['broken-pillar','arch-piece','rubble'] },
+  swamp:      { ground:'mud-tile',   edge:'water-edge', props:['dead-tree','reeds','lily-pad-water'] },
+  summit:     { ground:'snow-tile',  edge:'snow-edge',  props:['snow-pine','snow-peak','snow-drift'] },
+};
+
+function wm_kitNames() {
+  const names = [];
+  for (const k of Object.values(WM_KITS)) {
+    names.push(k.ground, k.edge, ...k.props);
+  }
+  return names;
+}
+
+function wm_maxOpen() { return (profile && profile.worldUnlocked) || 1; }
+function wm_done() { return (profile && Array.isArray(profile.worldCompleted)) ? profile.worldCompleted : []; }
+
+function wm_layout() {
+  // Gentle left-to-right chain in tile units (landscape diorama).
+  return [
+    { i:0, c:  0, r:  1.6, cells:[[0,0],[1,0],[0,1],[1,1],[-1,0],[0,-1],[1,-1]] },
+    { i:1, c:  7.5, r: -1.2, cells:[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1]] },
+    { i:2, c: 15.2, r:  1.4, cells:[[0,0],[1,0],[0,1],[-1,0],[1,-1],[0,-1],[-1,1]] },
+    { i:3, c: 22.8, r: -1.0, cells:[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[2,0]] },
+    { i:4, c: 30.4, r:  0.8, cells:[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,-1],[-1,-1]] },
+  ];
+}
+
+function wm_propsFor(layout, zoneIndex) {
+  // Deterministic 3 props per island, outward of the centre.
+  const seeds = [3, 5, 7];
+  const kit = WM_KITS[ZONES[zoneIndex].id];
+  return kit.props.map((type, n) => {
+    const cell = layout.cells[1 + ((n * 2 + zoneIndex) % Math.max(1, layout.cells.length - 1))];
+    return { c: layout.c + cell[0], r: layout.r + cell[1], type, kind: n === 0 ? 'tall' : 'mid' };
+  });
+}
+
+function openWorldMap() {
+  if (TD) { try { td_teardown(); } catch (e) {} TD = null; window.TD = null; }
+  if (WM && WM.raf) cancelAnimationFrame(WM.raf);
+  goTo('world');
+  const canvas = document.getElementById('wm-canvas');
+  const host = document.getElementById('screen-world');
+  const done = wm_done();
+  const maxOpen = wm_maxOpen();
+  const layouts = wm_layout();
+  const islands = layouts.map((L) => {
+    const z = ZONES[L.i];
+    const open = (L.i + 1) <= maxOpen;
+    return {
+      i: L.i, c: L.c, r: L.r, cells: L.cells, zone: z,
+      open, done: done.includes(z.id),
+      kit: WM_KITS[z.id],
+      props: wm_propsFor(L, L.i),
+    };
+  });
+  const start = Math.max(0, Math.min(islands.length - 1, maxOpen - 1));
+  WM = {
+    canvas, ctx: canvas.getContext('2d'),
+    islands,
+    at: start,          // island index the player is on
+    posC: islands[start].c,
+    posR: islands[start].r,
+    walk: null,         // { pts, t, i }
+    yaw: Math.PI * 0.12,
+    zoom: 1,
+    panSX: 0, panSY: 0,
+    camOX: 0, camOY: 0, fitZoom: 1,
+    lastTs: 0, raf: null, dpr: 1, viewW: 0, viewH: 0,
+    _ptr: { down:false, dragged:false, x:0, y:0, panSX:0, panSY:0 },
+    _pinching: false, _pinchDist: 0, _pinchZoom: 1,
+    lastTap: 0, lastTapX: 0, lastTapY: 0,
+    idleTime: 0, ready: false,
+  };
+  window.WM = WM;
+  function resize() {
+    if (!WM) return;
+    ss_applySelfLandscape();
+    document.body.classList.toggle('td-self-land', ss_isSelfLandscape());
+    const lw = host.clientWidth || window.innerWidth;
+    const lh = host.clientHeight || window.innerHeight;
+    host.classList.toggle('td-land', lw > lh + 8);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.style.width = lw + 'px';
+    canvas.style.height = lh + 'px';
+    canvas.width = Math.round(lw * dpr);
+    canvas.height = Math.round(lh * dpr);
+    WM.dpr = dpr; WM.viewW = lw; WM.viewH = lh;
+    WM.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    WM.ctx.imageSmoothingEnabled = false;
+    wm_fit();
+  }
+  WM._resizeFn = resize;
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  wm_bindInput(canvas);
+  resize();
+  const names = SS_SHARED.concat(SS_PLAYER.filter(n => n.indexOf('player-hop') !== 0)).concat(wm_kitNames());
+  ss_preload()
+    .then(() => ss_loadNames(names))
+    .then(() => { if (WM) { WM.ready = true; wm_fit(); } })
+    .catch(err => console.error(err));
+  wm_syncHud();
+  WM.raf = requestAnimationFrame(wm_loop);
+}
+
+function closeWorldMap() {
+  wm_teardown();
+  goTo('setup');
+  document.getElementById('tab-regular').className   = 'mode-tab';
+  document.getElementById('tab-challenge').className = 'mode-tab';
+  document.getElementById('tab-3d').className        = 'mode-tab act-lime';
+  document.getElementById('panel-regular').style.display   = 'none';
+  document.getElementById('panel-challenge').style.display = 'none';
+  document.getElementById('panel-3d').style.display        = '';
+  document.getElementById('screen-setup').classList.add('mode-3d');
   const cont = document.getElementById('zone-cards');
-  if (!cont) return;
-  const done    = Array.isArray(profile.worldCompleted) ? profile.worldCompleted : [];
-  const maxOpen = profile.worldUnlocked || 1;
+  if (cont) {
+    cont.innerHTML = '<div class="wm-open-wrap"><button type="button" class="btn btn-lime" onclick="openWorldMap()">OPEN WORLD MAP</button><div class="px-map-hint">WALK BETWEEN THE ISLANDS TO PICK A ZONE</div></div>';
+  }
+}
 
-  // Art-space positions inside the 244x366 map panel (from the Canvas mockup).
-  const zPos = [
-    { x: 60,  y: 318, name: 'GRASSLANDS' },
-    { x: 134, y: 254, name: 'HIGHLANDS' },
-    { x: 186, y: 186, name: 'RUINS' },
-    { x: 68,  y: 118, name: 'SWAMP' },
-    { x: 152, y: 48,  name: 'SUMMIT' },
-  ];
-  const ctrl = [
-    { x: 104, y: 310 },
-    { x: 184, y: 232 },
-    { x: 142, y: 156 },
-    { x: 118, y: 74 },
-  ];
-  const bez = (p0, p1, p2, t) => [
-    (1-t)*(1-t)*p0.x + 2*(1-t)*t*p1.x + t*t*p2.x,
-    (1-t)*(1-t)*p0.y + 2*(1-t)*t*p1.y + t*t*p2.y,
-  ];
+// Called from the 3D tab. Always open the map screen.
+function buildWorldMap() {
+  openWorldMap();
+}
 
-  let stones = '';
-  for (let i = 0; i < 4; i++) {
-    const open = (i + 1) <= maxOpen;
-    const fill = open ? '#ffeb94' : '#c9cfe4';
-    const stroke = open ? '#b06a18' : '#3f4460';
-    const p0 = zPos[i], p2 = zPos[i+1], p1 = ctrl[i];
-    stones += `<path d="M${p0.x} ${p0.y} Q ${p1.x} ${p1.y} ${p2.x} ${p2.y}" fill="none" stroke="${open ? '#ffd34a' : '#9aa0bd'}" stroke-width="2.2" stroke-dasharray="3 4" stroke-linecap="square" opacity="0.95"/>`;
-    const nSt = 12;
-    for (let k = 1; k < nSt; k++) {
-      const [x, y] = bez(p0, p1, p2, k / nSt);
-      stones += `<rect x="${(x-2).toFixed(1)}" y="${(y-1.5).toFixed(1)}" width="4" height="3" fill="${fill}" stroke="${stroke}" stroke-width="0.8"/>`;
+function wm_teardown() {
+  if (!WM) return;
+  if (WM.raf) cancelAnimationFrame(WM.raf);
+  if (WM._resizeFn) {
+    window.removeEventListener('resize', WM._resizeFn);
+    window.removeEventListener('orientationchange', WM._resizeFn);
+  }
+  const c = WM.canvas;
+  if (c && WM._onPtrDown) {
+    c.removeEventListener('mousedown', WM._onPtrDown);
+    window.removeEventListener('mousemove', WM._onPtrMove);
+    window.removeEventListener('mouseup', WM._onPtrUp);
+    c.removeEventListener('touchstart', WM._onPtrDown);
+    c.removeEventListener('touchmove', WM._onPtrMove);
+    c.removeEventListener('touchend', WM._onPtrUp);
+    c.removeEventListener('touchcancel', WM._onPtrUp);
+    if (WM._onWheel) c.removeEventListener('wheel', WM._onWheel);
+    if (WM._onTouchStart2) c.removeEventListener('touchstart', WM._onTouchStart2);
+    if (WM._onTouchMove2) c.removeEventListener('touchmove', WM._onTouchMove2);
+  }
+  const el = document.getElementById('screen-world');
+  if (el) { el.classList.remove('self-landscape'); el.classList.remove('td-land'); }
+  document.body.classList.remove('td-self-land');
+  WM = null;
+  window.WM = null;
+}
+
+function wm_playRect() {
+  const W = WM.viewW, H = WM.viewH;
+  return { x: 16, y: 44, w: W - 32, h: H - 44 - 16 };
+}
+
+function wm_toScreen(c, r) {
+  const pitch = SS_PITCH_SRC * SS_SCALE;
+  const cx = 15.2, cr = 0.3; // layout centre
+  const lx = (c - cx) * pitch;
+  const ly = (r - cr) * pitch;
+  const a = WM.yaw || 0;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  const rx = lx * cos - ly * sin;
+  const ry = (lx * sin + ly * cos) * SS_SQUASH;
+  return [WM.camOX + rx, WM.camOY + ry];
+}
+
+function wm_fit() {
+  if (!WM) return;
+  // Real AABB of every island cell (plus skirt / tile lift) so the chain fills the frame
+  // instead of a conservative circular bound that left the islands tiny.
+  const savedOX = WM.camOX || 0, savedOY = WM.camOY || 0;
+  WM.camOX = 0; WM.camOY = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  const add = (c, r) => {
+    const [x, y] = wm_toScreen(c, r);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  };
+  for (const isl of WM.islands) {
+    for (const [dc, dr] of isl.cells) add(isl.c + dc, isl.r + dr);
+    for (const p of isl.props) add(p.c, p.r);
+  }
+  minY -= 11 * SS_SCALE;
+  maxY += SS_SKIRT + 14;
+  minX -= 110; maxX += 110;
+  const play = wm_playRect();
+  const bw = Math.max(1, maxX - minX);
+  const bh = Math.max(1, maxY - minY);
+  const z = Math.max(0.2, Math.min(2.2, Math.min(play.w / bw, play.h / bh)));
+  WM.fitZoom = z;
+  const [W, H] = [WM.viewW, WM.viewH];
+  const visCx = (minX + maxX) / 2;
+  const visCy = (minY + maxY) / 2;
+  const targetX = play.x + play.w / 2;
+  const targetY = play.y + play.h / 2 + 6; // leave a little air under the labels
+  WM.camOX = (targetX - (1 - z) * W / 2) / z - visCx;
+  WM.camOY = (targetY - (1 - z) * H / 2) / z - visCy;
+}
+
+function wm_effectiveZoom() { return (WM.fitZoom || 1) * (WM.zoom || 1); }
+
+function wm_syncHud() {
+  const btn = document.getElementById('wm-play-btn');
+  const hint = document.getElementById('wm-hint');
+  if (!WM || !btn) return;
+  const isl = WM.islands[WM.at];
+  const walking = !!(WM.walk);
+  const canPlay = !walking && isl && isl.open;
+  btn.style.visibility = canPlay ? 'visible' : 'hidden';
+  if (hint) {
+    hint.textContent = walking
+      ? 'WALKING…'
+      : (canPlay ? (isl.done ? 'CLEARED · TAP THE ISLAND OR PLAY TO REVISIT' : 'TAP THE ISLAND OR PLAY TO ENTER')
+                 : 'DRAG TO LOOK AROUND · TAP AN UNLOCKED ISLAND TO WALK THERE');
+  }
+}
+
+function wm_playCurrent() {
+  if (!WM || WM.walk) return;
+  const isl = WM.islands[WM.at];
+  if (isl && isl.open) {
+    const idx = isl.i;
+    wm_teardown();
+    launchZone(idx);
+  }
+}
+
+function wm_walkTo(index) {
+  if (!WM) return;
+  const dest = WM.islands[index];
+  if (!dest) return;
+  if (!dest.open) {
+    const hint = document.getElementById('wm-hint');
+    if (hint) hint.textContent = 'LOCKED · CLEAR THE LAST ZONE TO OPEN THIS ONE';
+    return;
+  }
+  if (index === WM.at && !WM.walk) { wm_playCurrent(); return; }
+  const pts = [];
+  const step = index > WM.at ? 1 : -1;
+  let c = WM.posC, r = WM.posR;
+  for (let i = WM.at; i !== index; i += step) {
+    const nxt = WM.islands[i + step];
+    const n = 10;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      pts.push([c + (nxt.c - c) * t, r + (nxt.r - r) * t]);
     }
-    for (const t of [0.36, 0.66]) {
-      const [x, y] = bez(p0, p1, p2, t);
-      stones += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${open ? '#e8a128' : '#686e8d'}" stroke="#0b1519" stroke-width="1.3"/>`;
+    c = nxt.c; r = nxt.r;
+  }
+  WM.walk = { pts, i: 0, t: 0 };
+  wm_syncHud();
+}
+
+function wm_loop(ts) {
+  if (!WM) return;
+  WM.raf = requestAnimationFrame(wm_loop);
+  const dt = Math.min(0.08, (ts - (WM.lastTs || ts)) / 1000);
+  WM.lastTs = ts;
+  WM.idleTime = (WM.idleTime || 0) + dt;
+  if (WM.walk) {
+    WM.walk.t += dt * 10; // ~10 path points per second
+    while (WM.walk && WM.walk.t >= 1) {
+      WM.walk.t -= 1;
+      const p = WM.walk.pts[WM.walk.i];
+      if (p) { WM.posC = p[0]; WM.posR = p[1]; }
+      WM.walk.i++;
+      if (WM.walk.i >= WM.walk.pts.length) {
+        const dest = WM.walk.pts[WM.walk.pts.length - 1];
+        // snap to nearest island
+        let best = 0, bd = 1e9;
+        WM.islands.forEach((isl, i) => {
+          const d = Math.hypot(isl.c - dest[0], isl.r - dest[1]);
+          if (d < bd) { bd = d; best = i; }
+        });
+        WM.at = best;
+        WM.posC = WM.islands[best].c;
+        WM.posR = WM.islands[best].r;
+        WM.walk = null;
+        wm_syncHud();
+      }
+    }
+  }
+  wm_render();
+}
+
+function wm_render() {
+  if (!WM) return;
+  const { ctx } = WM;
+  const W = WM.viewW, H = WM.viewH;
+  ctx.clearRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = false;
+  // Sky
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0a1020');
+  g.addColorStop(0.55, '#152038');
+  g.addColorStop(1, '#1a1630');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  if (!WM.ready || !SS.ready) {
+    ctx.fillStyle = '#e8dcc8';
+    ctx.font = '10px "Press Start 2P", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('LOADING…', W / 2, H / 2);
+    return;
+  }
+  const zoom = wm_effectiveZoom();
+  ctx.save();
+  ctx.translate(W * 0.5 + (WM.panSX || 0), H * 0.5 + (WM.panSY || 0));
+  ctx.scale(zoom, zoom);
+  ctx.translate(-W * 0.5, -H * 0.5);
+  ctx.imageSmoothingEnabled = false;
+
+  // Path stones between islands
+  const pitch = SS_PITCH_SRC * SS_SCALE;
+  for (let i = 0; i < WM.islands.length - 1; i++) {
+    const a = WM.islands[i], b = WM.islands[i + 1];
+    const open = b.open;
+    const n = 8;
+    for (let k = 1; k < n; k++) {
+      const t = k / n;
+      const c = a.c + (b.c - a.c) * t, r = a.r + (b.r - a.r) * t;
+      const [x, y] = wm_toScreen(c, r);
+      ctx.fillStyle = open ? 'rgba(255,211,74,0.85)' : 'rgba(104,110,141,0.7)';
+      ctx.strokeStyle = '#0b1519';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 6, 6 * SS_SQUASH, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
     }
   }
 
-  const islands = ZONES.map((z, i) => {
-    const num = i + 1;
-    const isOpen = num <= maxOpen;
-    const isDone = done.includes(z.id);
-    const src = PX + '/island-' + num + (isOpen ? '' : '-locked') + '.png';
-    return `<img class="px-island" src="${src}" alt="">`;
-  }).join('');
+  // Depth-sort islands by screen y
+  const order = WM.islands.map((isl, i) => ({ isl, i, y: wm_toScreen(isl.c, isl.r)[1] }));
+  order.sort((a, b) => a.y - b.y);
+  const yaw = WM.yaw;
+  const tnow = (WM.lastTs || 0) / 1000;
+  for (const rec of order) {
+    const isl = rec.isl;
+    wm_drawOneIsland(ctx, isl, yaw, tnow);
+  }
 
-  const zones = ZONES.map((z, i) => {
-    const p = zPos[i];
-    const num = i + 1;
-    const isOpen = num <= maxOpen;
-    const isDone = done.includes(z.id);
-    const cls = 'px-zone' + (isOpen ? '' : ' locked') + (isDone ? ' done' : '');
-    const node = isDone ? 'node-cleared.png' : isOpen ? 'node-play.png' : 'node-lock.png';
-    const click = isOpen ? `onclick="launchZone(${i})"` : '';
-    const left = (p.x / 244 * 100).toFixed(2);
-    const top  = (p.y / 366 * 100).toFixed(2);
-    return `<button type="button" class="${cls}" style="left:${left}%;top:${top}%" ${click} aria-label="${z.name}">
-      <img class="px-node" src="${PX}/${node}" alt="">
-      <span class="px-badge">${num}</span>
-      <span class="px-plaque">${zPos[i].name}</span>
-    </button>`;
-  }).join('');
+  // Player
+  const walking = !!WM.walk;
+  const face = (() => {
+    if (!WM.walk || !WM.walk.pts.length) return 0;
+    const p0 = WM.walk.pts[Math.max(0, WM.walk.i - 1)] || [WM.posC, WM.posR];
+    const p1 = WM.walk.pts[Math.min(WM.walk.pts.length - 1, WM.walk.i)] || p0;
+    return Math.atan2(p1[0] - p0[0], p1[1] - p0[1]);
+  })();
+  const [px, py] = wm_toScreen(WM.posC, WM.posR);
+  ss_shadow(ctx, px, py, pitch * 0.4, pitch * 0.26 * SS_SQUASH, 0.36);
+  const fr = walking
+    ? 'player-walk-' + (Math.floor((WM.lastTs || 0) / 125) % 4)
+    : ((Math.floor((WM.idleTime || 0) * 2) % 2 === 0) ? 'player-idle-0' : 'player-idle-1');
+  ss_blit(ctx, fr, px, py, yaw - face);
 
-  cont.innerHTML = `<div class="px-map">
-    <div class="px-map-stage">
-      <img class="px-map-base" src="${PX}/map-base.png" alt="">
-      ${islands}
-      <svg class="px-paths" viewBox="0 0 244 366" preserveAspectRatio="none">${stones}</svg>
-      ${zones}
-    </div>
-    <div class="px-map-hint">CLEAR EACH ZONE TO UNLOCK<br>THE NEXT. TAP A TILE TO WALK</div>
-  </div>`;
+  ctx.restore();
+
+  // Labels in screen space
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.font = '8px "Press Start 2P", ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (const isl of WM.islands) {
+    const [wx, wy] = wm_toScreen(isl.c, isl.r);
+    const sx = (wx - W * 0.5) * zoom + W * 0.5 + (WM.panSX || 0);
+    const sy = (wy - H * 0.5) * zoom + H * 0.5 + (WM.panSY || 0);
+    const labelY = sy + 36 * zoom;
+    const name = isl.zone.name.toUpperCase();
+    const tag = !isl.open ? 'LOCKED' : (isl.done ? 'CLEARED' : 'OPEN');
+    const col = !isl.open ? '#9aa0bd' : (isl.done ? '#4cc548' : '#ffe14a');
+    ctx.lineWidth = 3; ctx.strokeStyle = '#0b1519'; ctx.fillStyle = '#fff4d2';
+    ctx.strokeText(name, sx, labelY);
+    ctx.fillText(name, sx, labelY);
+    ctx.fillStyle = col;
+    ctx.strokeText(tag, sx, labelY + 12);
+    ctx.fillText(tag, sx, labelY + 12);
+  }
+  ctx.restore();
+  ss_drawTiltShift(ctx, W, H);
 }
 
-// ── Sprite-stack 3D World renderer ───────────────────────
+function wm_drawOneIsland(ctx, isl, yaw, tnow) {
+  const kit = isl.kit;
+  const pitch = SS_PITCH_SRC * SS_SCALE;
+  // Floating shadow + skirt around the cluster
+  const pts = isl.cells.map(([dc, dr]) => wm_toScreen(isl.c + dc, isl.r + dr));
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = Math.max(...ys);
+  const rx = (Math.max(...xs) - Math.min(...xs)) * 0.7 + 18;
+  const ry = rx * SS_SQUASH * 0.4;
+  ctx.save();
+  if (!isl.open) ctx.globalAlpha = 0.55;
+  ctx.fillStyle = 'rgba(8,10,18,0.45)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + SS_SKIRT + 10, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+  // Mini skirt as a dark block under the AABB
+  const minx = Math.min(...xs) - 10, maxx = Math.max(...xs) + 10;
+  const miny = Math.min(...ys) - 4, maxy = Math.max(...ys) + 4;
+  const dirt = isl.zone.id === 'summit' ? [200, 214, 230]
+    : isl.zone.id === 'swamp' ? [40, 70, 48]
+    : isl.zone.id === 'ruins' ? [90, 60, 32]
+    : isl.zone.id === 'highlands' ? [70, 74, 88]
+    : [58, 42, 24];
+  ctx.fillStyle = `rgb(${dirt[0]},${dirt[1]},${dirt[2]})`;
+  ctx.strokeStyle = '#0b1519';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(minx, maxy); ctx.lineTo(maxx, maxy);
+  ctx.lineTo(maxx, maxy + SS_SKIRT * 0.7); ctx.lineTo(minx, maxy + SS_SKIRT * 0.7);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  for (const [dc, dr] of isl.cells) {
+    const [x, y] = wm_toScreen(isl.c + dc, isl.r + dr);
+    ss_shadow(ctx, x, y, pitch * 0.44, pitch * 0.44 * SS_SQUASH, 0.26);
+  }
+  for (const [dc, dr] of isl.cells) {
+    const [x, y] = wm_toScreen(isl.c + dc, isl.r + dr);
+    const isEdge = Math.abs(dc) + Math.abs(dr) >= 2;
+    ss_blit(ctx, isEdge ? kit.edge : kit.ground, x, y, yaw);
+  }
+  for (const p of isl.props) {
+    let [x, y] = wm_toScreen(p.c, p.r);
+    if (SS_SWAY.has(p.type)) x += Math.sin(tnow * 1.5 + p.c * 0.8) * (p.kind === 'tall' ? 2.2 : 1.2);
+    ss_blit(ctx, p.type, x, y, yaw);
+  }
+  ctx.restore();
+  if (!isl.open) {
+    const [lx, ly] = wm_toScreen(isl.c, isl.r);
+    ctx.fillStyle = '#0b1519';
+    ctx.strokeStyle = '#c9cfe4';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(lx, ly - 28, 12, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#c9cfe4';
+    ctx.font = '10px "Press Start 2P", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('X', lx, ly - 27);
+  }
+}
+
+function wm_hitIsland(px, py) {
+  const W = WM.viewW, H = WM.viewH, zoom = wm_effectiveZoom();
+  const wx = (px - W * 0.5 - (WM.panSX || 0)) / zoom + W * 0.5;
+  const wy = (py - H * 0.5 - (WM.panSY || 0)) / zoom + H * 0.5;
+  let best = -1, bd = 70; // un-zoomed px
+  WM.islands.forEach((isl, i) => {
+    const [x, y] = wm_toScreen(isl.c, isl.r);
+    const d = Math.hypot(x - wx, y - wy);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+
+function wm_bindInput(canvas) {
+  const ptr = WM._ptr;
+  const down = (cx, cy) => {
+    ptr.down = true; ptr.dragged = false; ptr.x = cx; ptr.y = cy;
+    ptr.panSX = WM.panSX || 0; ptr.panSY = WM.panSY || 0;
+  };
+  const move = (cx, cy) => {
+    if (!ptr.down) return;
+    const [lx, ly] = ss_clientToLocal(cx, cy);
+    const [sx, sy] = ss_clientToLocal(ptr.x, ptr.y);
+    const dx = lx - sx, dy = ly - sy;
+    if (!ptr.dragged && Math.hypot(dx, dy) > 8) ptr.dragged = true;
+    if (ptr.dragged) {
+      WM.panSX = ptr.panSX + dx;
+      WM.panSY = ptr.panSY + dy;
+    }
+  };
+  const up = (cx, cy) => {
+    if (!ptr.down) return;
+    const dragged = ptr.dragged;
+    ptr.down = false;
+    if (dragged || WM._pinching) return;
+    const [px, py] = ss_eventToCanvas(cx, cy);
+    const now = performance.now();
+    if (now - (WM.lastTap || 0) < 300 && Math.hypot(px - WM.lastTapX, py - WM.lastTapY) < 28) {
+      WM.panSX = 0; WM.panSY = 0; WM.zoom = 1;
+      WM.lastTap = 0;
+      return;
+    }
+    WM.lastTap = now; WM.lastTapX = px; WM.lastTapY = py;
+    const hit = wm_hitIsland(px, py);
+    if (hit >= 0) wm_walkTo(hit);
+  };
+  WM._onPtrDown = (e) => {
+    if (e.touches && e.touches.length >= 2) { ptr.down = false; return; }
+    if (e.touches && e.touches.length === 1) {
+      e.preventDefault();
+      down(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.button === 0) down(e.clientX, e.clientY);
+  };
+  WM._onPtrMove = (e) => {
+    if (e.touches && e.touches.length === 2) { ptr.down = false; return; }
+    if (e.touches && e.touches.length === 1 && ptr.down) {
+      e.preventDefault();
+      move(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (ptr.down && e.buttons) move(e.clientX, e.clientY);
+  };
+  WM._onPtrUp = (e) => {
+    if (WM._pinching) { WM._pinching = false; ptr.down = false; return; }
+    let cx, cy;
+    if (e.changedTouches && e.changedTouches[0]) { cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; }
+    else { cx = e.clientX; cy = e.clientY; }
+    up(cx, cy);
+  };
+  WM._onWheel = (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.10 : 0.91;
+    const [lx, ly] = ss_eventToCanvas(e.clientX, e.clientY);
+    wm_setZoomAt((WM.zoom || 1) * factor, lx, ly);
+  };
+  WM._onTouchStart2 = (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      WM._pinchDist = Math.hypot(dx, dy);
+      WM._pinchZoom = WM.zoom || 1;
+      WM._pinching = true;
+      e.preventDefault();
+    }
+  };
+  WM._onTouchMove2 = (e) => {
+    if (e.touches.length === 2 && WM._pinchDist > 0) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const d = Math.hypot(dx, dy);
+      const [ax, ay] = ss_clientToLocal(
+        (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        (e.touches[0].clientY + e.touches[1].clientY) / 2
+      );
+      const [px, py] = ss_eventToCanvasFromLocal(ax, ay);
+      wm_setZoomAt(WM._pinchZoom * d / WM._pinchDist, px, py);
+      e.preventDefault();
+    }
+  };
+  canvas.addEventListener('mousedown', WM._onPtrDown);
+  window.addEventListener('mousemove', WM._onPtrMove);
+  window.addEventListener('mouseup', WM._onPtrUp);
+  canvas.addEventListener('touchstart', WM._onPtrDown, { passive: false });
+  canvas.addEventListener('touchmove', WM._onPtrMove, { passive: false });
+  canvas.addEventListener('touchend', WM._onPtrUp, { passive: false });
+  canvas.addEventListener('touchcancel', WM._onPtrUp);
+  canvas.addEventListener('wheel', WM._onWheel, { passive: false });
+  canvas.addEventListener('touchstart', WM._onTouchStart2, { passive: false });
+  canvas.addEventListener('touchmove', WM._onTouchMove2, { passive: false });
+}
+
+function wm_setZoomAt(newZoom, sx, sy) {
+  const L = ss_zoomLimits();
+  const oldZ = wm_effectiveZoom();
+  WM.zoom = Math.max(L.min, Math.min(L.max, newZoom));
+  const z = wm_effectiveZoom();
+  const W = WM.viewW, H = WM.viewH;
+  // keep (sx,sy) fixed
+  WM.panSX = (sx - W * 0.5) * (1 - z / oldZ) + (WM.panSX || 0) * (z / oldZ);
+  WM.panSY = (sy - H * 0.5) * (1 - z / oldZ) + (WM.panSY || 0) * (z / oldZ);
+}
+
+function ss_eventToCanvasFromLocal(lx, ly) {
+  // already in stage-local CSS px; canvas is 0,0 of the stage in self-landscape
+  if (ss_isSelfLandscape()) return [lx, ly];
+  const canvas = (TD && TD.canvas) || (WM && WM.canvas);
+  if (!canvas) return [lx, ly];
+  const rect = canvas.getBoundingClientRect();
+  return [lx - rect.left, ly - rect.top];
+}
+
+
 const SS_DIR = 'pixel-retro/stacks/';
 const SS_SHARED = ['grass-block','tile-unrevealed','tile-revealed-1','pine-tree','rock','mine','flag'];
 const SS_PLAYER = [
@@ -4777,8 +5309,11 @@ const SS_BIOMES = {
 const SS_ANGLES = 32;
 const SS_SCALE  = 4;
 const SS_PITCH_SRC = 16; // tile footprint in source px
-const SS_SQUASH = 0.62; // board-level 3/4 camera (same idea as BATTLE towers)
-const SS_SKIRT  = 28;   // dirt side height under the island, in un-zoomed px
+const SS_SQUASH = 0.52; // tilted diorama camera (sides + underside of the floating island)
+const SS_SKIRT  = 42;   // dirt side height under the island, in un-zoomed px
+const SS_SWAY = new Set(['oak','bush','flowers','pine-variant','pine-tree','heather','reeds','dead-tree','snow-pine','vines']);
+const SS_ZOOM_MIN = 0.75;
+const SS_ZOOM_MAX = 2.6;
 
 const SS = {
   ready: false,
@@ -4803,6 +5338,7 @@ window.SS = SS;
     for (const n of names) SS.paths[n] = 'biomes/' + zone + '/' + n;
   }
 })();
+
 
 function ss_url(name, kind) {
   const path = SS.paths[name] || name;
@@ -5069,19 +5605,29 @@ function ss_depth(c, r) {
   return ss_worldToScreen(c, r)[1];
 }
 
+function ss_activeStage() {
+  for (const id of ['screen-3d', 'screen-world']) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('active')) return el;
+  }
+  return null;
+}
+
 function ss_isSelfLandscape() {
-  const el = document.getElementById('screen-3d');
+  const el = ss_activeStage();
   return !!(el && el.classList.contains('self-landscape'));
 }
 
 function ss_applySelfLandscape() {
-  const el = document.getElementById('screen-3d');
-  if (!el) return;
   const portrait = window.innerHeight > window.innerWidth + 8;
-  el.classList.toggle('self-landscape', portrait && el.classList.contains('active'));
+  for (const id of ['screen-3d', 'screen-world']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.classList.toggle('self-landscape', portrait && el.classList.contains('active'));
+  }
 }
 
-// Map a viewport (client) point into #screen-3d local CSS pixels.
+// Map a viewport (client) point into the active stage's local CSS pixels.
 function ss_clientToLocal(clientX, clientY) {
   if (!ss_isSelfLandscape()) return [clientX, clientY];
   // 90° CCW (rotate(-90deg) translateX(-100%), origin top left):
@@ -5092,11 +5638,55 @@ function ss_clientToLocal(clientX, clientY) {
 
 function ss_eventToCanvas(clientX, clientY) {
   const [lx, ly] = ss_clientToLocal(clientX, clientY);
-  const canvas = TD && TD.canvas;
-  // In self-landscape the canvas fills #screen-3d, which is at local (0,0)
+  const canvas = (TD && TD.canvas) || (typeof WM !== 'undefined' && WM && WM.canvas);
+  // In self-landscape the canvas fills the rotated stage, which is at local (0,0)
   if (ss_isSelfLandscape()) return [lx, ly];
+  if (!canvas) return [lx, ly];
   const rect = canvas.getBoundingClientRect();
   return [lx - rect.left, ly - rect.top];
+}
+
+function ss_zoomLimits() { return { min: SS_ZOOM_MIN, max: SS_ZOOM_MAX }; }
+
+function ss_setZoomAt(newZoom, sx, sy) {
+  if (!TD) return;
+  const L = ss_zoomLimits();
+  const oldZ = ss_effectiveZoom();
+  TD.zoom = Math.max(L.min, Math.min(L.max, newZoom));
+  const z = ss_effectiveZoom();
+  if (!oldZ) return;
+  const [W, H] = td_viewSize();
+  // Keep the world point under (sx, sy) fixed as the zoom changes.
+  TD.panSX = (sx - W * 0.5) * (1 - z / oldZ) + (TD.panSX || 0) * (z / oldZ);
+  TD.panSY = (sy - H * 0.5) * (1 - z / oldZ) + (TD.panSY || 0) * (z / oldZ);
+  ss_clampPan();
+}
+
+function ss_clampPan() {
+  if (!TD) return;
+  const play = ss_playRect();
+  const maxX = play.w * 0.72;
+  const maxY = play.h * 0.72;
+  TD.panSX = Math.max(-maxX, Math.min(maxX, TD.panSX || 0));
+  TD.panSY = Math.max(-maxY, Math.min(maxY, TD.panSY || 0));
+}
+
+function ss_recenterOnPlayer() {
+  if (!TD) return;
+  const t = TD.charAnimT;
+  const aC = TD.charCol + (TD.charTCol - TD.charCol) * t;
+  const aR = TD.charRow + (TD.charTRow - TD.charRow) * t;
+  const [wx, wy] = ss_worldToScreen(aC, aR); // un-zoomed, includes cam, not pan
+  const z = ss_effectiveZoom();
+  const [W, H] = td_viewSize();
+  const play = ss_playRect();
+  const targetX = play.x + play.w / 2;
+  const targetY = play.y + play.h / 2;
+  // sx = (wx - W/2) * z + W/2 + panSX  == targetX
+  TD.panSX = targetX - (wx - W * 0.5) * z - W * 0.5;
+  TD.panSY = targetY - (wy - H * 0.5) * z - H * 0.5;
+  TD.zoom = TD.zoom || 1;
+  ss_clampPan();
 }
 
 function ss_playRect() {
@@ -5120,15 +5710,15 @@ function ss_fitZoom() {
   const maxHalfW = Math.hypot(a, b);          // worst yaw
   const maxHalfH = maxHalfW * SS_SQUASH;
   const tileTop = 11 * s;                     // ground-tile height (full, unsquashed lift)
-  const pad = 8;
+  const pad = 18;                             // extra air around the island (diorama / float)
   const play = ss_playRect();
   const bw = maxHalfW * 2 + pad * 2;
-  const bh = maxHalfH * 2 + tileTop + SS_SKIRT + pad * 2;
+  const bh = maxHalfH * 2 + tileTop + SS_SKIRT + 18 + pad * 2;
   const z = Math.max(0.16, Math.min(2.4, Math.min(play.w / bw, play.h / bh)));
   TD.fitZoom = z;
 
   const relMinY = -maxHalfH - tileTop;
-  const relMaxY =  maxHalfH + SS_SKIRT;
+  const relMaxY =  maxHalfH + SS_SKIRT + 18;  // shadow under the skirt
   const visCy = (relMinY + relMaxY) / 2;
   const [W, H] = td_viewSize();
   const targetX = play.x + play.w / 2;
@@ -5219,18 +5809,24 @@ function ss_genDecorations() {
 }
 
 function ss_bindInput(canvas) {
-  TD._ptr = { down: false, dragged: false, x: 0, y: 0, yaw: 0, id: null };
+  TD._ptr = { down: false, dragged: false, x: 0, y: 0, panSX: 0, panSY: 0, id: null };
+  TD.lastTap = 0; TD.lastTapX = 0; TD.lastTapY = 0;
   const down = (cx, cy, id) => {
     TD._ptr.down = true; TD._ptr.dragged = false; TD._ptr.id = id;
-    TD._ptr.x = cx; TD._ptr.y = cy; TD._ptr.yaw = TD.yaw || 0;
+    TD._ptr.x = cx; TD._ptr.y = cy;
+    TD._ptr.panSX = TD.panSX || 0; TD._ptr.panSY = TD.panSY || 0;
   };
   const move = (cx, cy) => {
     if (!TD._ptr.down) return;
-    const dx = cx - TD._ptr.x;
-    const dy = cy - TD._ptr.y;
+    const [lx, ly] = ss_clientToLocal(cx, cy);
+    const [sx, sy] = ss_clientToLocal(TD._ptr.x, TD._ptr.y);
+    const dx = lx - sx, dy = ly - sy;
     if (!TD._ptr.dragged && Math.hypot(dx, dy) > 8) TD._ptr.dragged = true;
     if (TD._ptr.dragged) {
-      TD.yaw = TD._ptr.yaw + dx * 0.008;
+      // One-finger / mouse drag pans the world (TURN buttons still yaw).
+      TD.panSX = TD._ptr.panSX + dx;
+      TD.panSY = TD._ptr.panSY + dy;
+      ss_clampPan();
     }
   };
   const up = (cx, cy, ev) => {
@@ -5239,10 +5835,20 @@ function ss_bindInput(canvas) {
     TD._ptr.down = false;
     if (dragged) {
       if (ev && ev.preventDefault) ev.preventDefault();
-      return true; // swallowed
+      return true;
     }
-    if (TD.dead || TD.won) return false;
     const [px, py] = ss_eventToCanvas(cx, cy);
+    const now = performance.now();
+    if (now - (TD.lastTap || 0) < 300 && Math.hypot(px - (TD.lastTapX || 0), py - (TD.lastTapY || 0)) < 28) {
+      // Double-tap: recenter on the player and cancel any path from the first tap.
+      TD.path = [];
+      ss_recenterOnPlayer();
+      TD.lastTap = 0;
+      if (ev && ev.preventDefault) ev.preventDefault();
+      return true;
+    }
+    TD.lastTap = now; TD.lastTapX = px; TD.lastTapY = py;
+    if (TD.dead || TD.won) return false;
     td_tapAt(px, py);
     return true;
   };
@@ -5260,20 +5866,9 @@ function ss_bindInput(canvas) {
     if (e.touches && e.touches.length === 2) { TD._ptr.down = false; return; }
     if (e.touches && e.touches.length === 1 && TD._ptr.down) {
       e.preventDefault();
-      const [lx, ly] = ss_clientToLocal(e.touches[0].clientX, e.touches[0].clientY);
-      const [sx, sy] = ss_clientToLocal(TD._ptr.x, TD._ptr.y);
-      // move() wants raw client for dx, but yaw should follow local landscape X
-      if (!TD._ptr.dragged && Math.hypot(e.touches[0].clientX - TD._ptr.x, e.touches[0].clientY - TD._ptr.y) > 8)
-        TD._ptr.dragged = true;
-      if (TD._ptr.dragged) TD.yaw = TD._ptr.yaw + (lx - sx) * 0.008;
+      move(e.touches[0].clientX, e.touches[0].clientY);
     } else if (TD._ptr.down && e.buttons) {
-      const [lx] = ss_clientToLocal(e.clientX, e.clientY);
-      const [sx] = ss_clientToLocal(TD._ptr.x, TD._ptr.y);
-      const [ly] = ss_clientToLocal(e.clientX, e.clientY);
-      const dy = e.clientY - TD._ptr.y;
-      const dx = e.clientX - TD._ptr.x;
-      if (!TD._ptr.dragged && Math.hypot(dx, dy) > 8) TD._ptr.dragged = true;
-      if (TD._ptr.dragged) TD.yaw = TD._ptr.yaw + (lx - sx) * 0.008;
+      move(e.clientX, e.clientY);
     }
   };
   TD._onPtrUp = (e) => {
@@ -5324,15 +5919,38 @@ function ss_shadow(ctx, x, y, rx, ry, a) {
   ctx.restore();
 }
 
+function ss_islandDirt() {
+  const id = TD && TD.zone && TD.zone.id;
+  if (id === 'summit') return [186, 200, 222];
+  if (id === 'swamp') return [46, 72, 50];
+  if (id === 'ruins') return [96, 62, 34];
+  if (id === 'highlands') return [72, 76, 90];
+  return [58, 42, 22];
+}
+
 function ss_drawIslandSkirt(ctx) {
   const C = TD.cols, R = TD.rows;
+  const ring = ss_islandPad();
+  const lo = -ring - 0.5, hiC = C + ring - 0.5, hiR = R + ring - 0.5;
   const pts = [
-    ss_worldToScreen(-1.5,     -1.5),
-    ss_worldToScreen(C + 0.5,  -1.5),
-    ss_worldToScreen(C + 0.5,   R + 0.5),
-    ss_worldToScreen(-1.5,      R + 0.5),
+    ss_worldToScreen(lo,  lo),
+    ss_worldToScreen(hiC, lo),
+    ss_worldToScreen(hiC, hiR),
+    ss_worldToScreen(lo,  hiR),
   ];
   const h = SS_SKIRT;
+  // Soft shadow under the floating island (diorama / tilt-shift miniature).
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = Math.max(...ys) + h * 0.35;
+  const rx = (Math.max(...xs) - Math.min(...xs)) * 0.52 + 8;
+  const ry = rx * SS_SQUASH * 0.38;
+  ctx.save();
+  ctx.fillStyle = 'rgba(6,8,14,0.40)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 16, rx * 1.15, ry * 1.15, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(6,8,14,0.50)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 12, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
   const edges = [];
   for (let i = 0; i < 4; i++) {
     const a = pts[i], b = pts[(i + 1) % 4];
@@ -5344,9 +5962,10 @@ function ss_drawIslandSkirt(ctx) {
   for (const e of edges) {
     const t = (e.midY - y0) / Math.max(1, y1 - y0);
     const shade = 0.22 + t * 0.38;
-    const r = Math.round(42 * (1 - shade * 0.45));
-    const g = Math.round(32 * (1 - shade * 0.45));
-    const b = Math.round(20 * (1 - shade * 0.4));
+    const dirt = ss_islandDirt();
+    const r = Math.round(dirt[0] * (1 - shade * 0.45));
+    const g = Math.round(dirt[1] * (1 - shade * 0.45));
+    const b = Math.round(dirt[2] * (1 - shade * 0.4));
     ctx.beginPath();
     ctx.moveTo(e.a[0], e.a[1]);
     ctx.lineTo(e.b[0], e.b[1]);
@@ -5442,7 +6061,14 @@ function ss_drawWorld(ctx) {
   for (const it of items) {
     if (it.kind === 'ground') ss_blit(ctx, it.name, ...ss_worldToScreen(it.c, it.r), yaw);
     else if (it.kind === 'tile') ss_drawTile(ctx, it.c, it.r, yaw);
-    else if (it.kind === 'deco') ss_blit(ctx, it.d.type, ...ss_worldToScreen(it.c, it.r), yaw);
+    else if (it.kind === 'deco') {
+      let [dx, dy] = ss_worldToScreen(it.c, it.r);
+      if (SS_SWAY.has(it.d.type)) {
+        const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+        dx += Math.sin(t * 1.55 + it.c * 0.85 + it.r * 0.55) * (it.d.kind === 'tall' ? 2.4 : 1.3);
+      }
+      ss_blit(ctx, it.d.type, dx, dy, yaw);
+    }
     else if (it.kind === 'char') ss_drawCharAt(ctx, it.c, it.r);
     else if (it.kind === 'target') ss_drawTarget(ctx, it.c, it.r);
     else if (it.kind === 'boom') ss_drawBoomAt(ctx, it.c, it.r);
@@ -5495,10 +6121,13 @@ function ss_drawNum(ctx, x, y, n) {
   const glyph = SS_DIGITS[n];
   if (!glyph) return;
   const zoom = ss_effectiveZoom() || 1;
-  // After ctx.scale(1/zoom), 1 unit = 1 screen pixel. 3 px/cell -> ~21 px tall glyphs
-  // that stay the same size at every camera zoom (readable on Summit, not bigger than a tile on Grasslands).
-  const pix = 3;
   const rows = glyph.length, cols = glyph[0].length;
+  // After ctx.scale(1/zoom), 1 unit = 1 screen pixel. Tile-centre spacing is tightest
+  // along the squashed axis (zoom * pitch * SS_SQUASH). Keep the outlined glyph
+  // inside that gap so neighbouring numbers never overlap at any yaw or zoom.
+  const pitch = SS_PITCH_SRC * (TD.stackScale || SS_SCALE) * zoom;
+  const minGap = pitch * SS_SQUASH;
+  const pix = Math.max(1, Math.floor((minGap * 0.84) / (cols + 2)));
   const top = y - 5 * (TD.stackScale || SS_SCALE) - 2;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(top));
@@ -5649,6 +6278,7 @@ function launchZone(zoneIndex) {
     charAnimT: 1, walkPhase: 0, charFace: 0,
     path: [],
     camOX: 0, camOY: 0, camTOX: 0, camTOY: 0,
+    panSX: 0, panSY: 0,
     canvas: null, ctx: null, raf: null,
     boom: null, decorations: [], lastTs: 0,
     particles: [], particleTimer: 0, idleTime: 0, victoryAnim: 0,
@@ -5725,22 +6355,25 @@ function launchZone(zoneIndex) {
     .then(() => { if (TD) { ss_fitZoom(); td_snapCamera(); } })
     .catch(err => console.error(err));
 
-  // Scroll-wheel zoom
+  // Scroll-wheel zoom (toward the cursor, clamped)
   TD._onWheel = (e) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.10 : 0.91;
-    TD.zoom = Math.max(0.30, Math.min(4.0, TD.zoom * factor));
+    const [sx, sy] = ss_eventToCanvas(e.clientX, e.clientY);
+    ss_setZoomAt((TD.zoom || 1) * factor, sx, sy);
   };
   canvas.addEventListener('wheel', TD._onWheel, { passive: false });
 
-  // Pinch-to-zoom (track in touchstart/touchmove; flag to suppress tap-move)
+  // Pinch-to-zoom (around the pinch midpoint; flag to suppress tap-move)
   TD._pinching = false;
   TD._pinchDist = 0;
+  TD._pinchZoom = 1;
   TD._onTouchStart2 = (e) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       TD._pinchDist = Math.sqrt(dx*dx + dy*dy);
+      TD._pinchZoom = TD.zoom || 1;
       TD._pinching  = true;
       e.preventDefault();
     } else {
@@ -5752,8 +6385,10 @@ function launchZone(zoneIndex) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const d  = Math.sqrt(dx*dx + dy*dy);
-      TD.zoom = Math.max(0.30, Math.min(4.0, TD.zoom * d / TD._pinchDist));
-      TD._pinchDist = d;
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const [sx, sy] = ss_eventToCanvas(mx, my);
+      ss_setZoomAt(TD._pinchZoom * d / TD._pinchDist, sx, sy);
       e.preventDefault();
     }
   };
@@ -5775,8 +6410,7 @@ function quit3D() {
   td_teardown();
   TD = null;
   window.TD = null;
-  goTo('setup');
-  buildWorldMap();
+  openWorldMap();
 }
 
 // ── DECORATIONS ───────────────────────────
@@ -5957,8 +6591,8 @@ function td_targetCamera() {
 function td_screenToTile(px, py) {
   const zoom = ss_effectiveZoom();
   const [W, H] = td_viewSize();
-  const wx = (px - W * 0.5) / zoom + W * 0.5;
-  const wy = (py - H * 0.5) / zoom + H * 0.5;
+  const wx = (px - W * 0.5 - (TD.panSX || 0)) / zoom + W * 0.5;
+  const wy = (py - H * 0.5 - (TD.panSY || 0)) / zoom + H * 0.5;
   const rx = wx - TD.camOX;
   const ry = (wy - TD.camOY) / SS_SQUASH;
   const a = TD.yaw || 0;
@@ -6053,16 +6687,21 @@ function td_loop(ts) {
       TD.particleTimer = 0.04;
       const wid = _wZone.id;
       if (wid === 'swamp') {
-        for (let i = 0; i < 4; i++)
-          TD.particles.push({ x: Math.random()*W, y:-8, vx:-18, vy:320+Math.random()*90, life:1, maxLife:1, type:'rain', size:0.9+Math.random()*0.6 });
-        if (td_getDayPhase() < 0.35 && TD.particles.filter(p=>p.type==='firefly').length < 14)
+        if (Math.random() < 0.7)
+          TD.particles.push({ x: Math.random()*W, y:-8, vx:-18, vy:280+Math.random()*80, life:1, maxLife:1, type:'rain', size:0.9+Math.random()*0.6 });
+        if (TD.particles.filter(p=>p.type==='firefly').length < 10)
           TD.particles.push({ x:W*0.08+Math.random()*W*0.84, y:H*0.28+Math.random()*H*0.55, vx:(Math.random()-.5)*14, vy:(Math.random()-.5)*7, life:3+Math.random()*5, maxLife:8, type:'firefly', ph:Math.random()*Math.PI*2 });
       } else if (wid === 'summit') {
-        for (let i = 0; i < 3; i++)
-          TD.particles.push({ x:Math.random()*W, y:-6, vx:(Math.random()-.5)*22, vy:38+Math.random()*28, life:1, maxLife:1, type:'snow', size:2+Math.random()*3, wb:Math.random()*Math.PI*2 });
+        if (TD.particles.filter(p=>p.type==='snow').length < 40)
+          TD.particles.push({ x:Math.random()*W, y:-6, vx:(Math.random()-.5)*22, vy:38+Math.random()*28, life:1, maxLife:1, type:'snow', size:2+Math.random()*2.4, wb:Math.random()*Math.PI*2 });
       } else if (wid === 'ruins') {
-        if (Math.random()<0.45)
+        if (Math.random()<0.40)
           TD.particles.push({ x:Math.random()*W, y:H*0.65+Math.random()*H*0.35, vx:(Math.random()-.5)*22, vy:-(28+Math.random()*55), life:1, maxLife:1, type:'ember', size:1.4+Math.random()*2.2 });
+        if (Math.random()<0.25)
+          TD.particles.push({ x:Math.random()*W, y:H*0.4+Math.random()*H*0.5, vx:-(12+Math.random()*18), vy:-(6+Math.random()*10), life:1, maxLife:1, type:'dust', size:1+Math.random()*1.4 });
+      } else if (wid === 'highlands') {
+        if (Math.random()<0.4)
+          TD.particles.push({ x:Math.random()*W, y:H*0.25+Math.random()*H*0.6, vx:-(16+Math.random()*22), vy:-(4+Math.random()*10), life:1, maxLife:1, type:'dust', size:1+Math.random()*1.6 });
       } else if (wid === 'grasslands') {
         if (Math.random()<0.32)
           TD.particles.push({ x:W+12, y:H*0.18+Math.random()*H*0.52, vx:-(48+Math.random()*36), vy:(Math.random()-.28)*18, life:1, maxLife:1, type:'leaf', rot:Math.random()*Math.PI*2, rs:(Math.random()-.5)*3 });
@@ -6076,7 +6715,7 @@ function td_loop(ts) {
       p.life -= dt/p.maxLife;
     });
     TD.particles = TD.particles.filter(p=>p.life>0 && p.x>-60 && p.x<W+60 && p.y<H+60 && p.y>-60);
-    if (TD.particles.length > 280) TD.particles.splice(0, TD.particles.length - 280);
+    if (TD.particles.length > 110) TD.particles.splice(0, TD.particles.length - 110);
   }
 
   // Idle time + victory animation
@@ -6434,10 +7073,10 @@ function td_render() {
 
   ss_drawBackdrop(ctx, W, H);
 
-  // ── Apply zoom centered on canvas midpoint ──
+  // ── Apply zoom + user pan, centered on the canvas midpoint ──
   const zoom = ss_effectiveZoom();
   ctx.save();
-  ctx.translate(W * 0.5, H * 0.5);
+  ctx.translate(W * 0.5 + (TD.panSX || 0), H * 0.5 + (TD.panSY || 0));
   ctx.scale(zoom, zoom);
   ctx.translate(-W * 0.5, -H * 0.5);
   ctx.imageSmoothingEnabled = false;
@@ -6448,6 +7087,7 @@ function td_render() {
 
   // Particles (weather, fireflies, embers) — screen space, outside zoom
   td_drawParticles(ctx, W, H);
+  ss_drawTiltShift(ctx, W, H);
 
   // Biome fog/mist veil
   td_drawFog(ctx, W, H);
@@ -6834,6 +7474,28 @@ function td_drawBirds(ctx) {
   });
 }
 
+function ss_drawTiltShift(ctx, W, H) {
+  ctx.save();
+  const gTop = ctx.createLinearGradient(0, 0, 0, H * 0.22);
+  gTop.addColorStop(0, 'rgba(6,8,16,0.42)');
+  gTop.addColorStop(1, 'rgba(6,8,16,0)');
+  ctx.fillStyle = gTop;
+  ctx.fillRect(0, 0, W, H * 0.22);
+
+  const gBot = ctx.createLinearGradient(0, H * 0.78, 0, H);
+  gBot.addColorStop(0, 'rgba(6,8,16,0)');
+  gBot.addColorStop(1, 'rgba(6,8,16,0.38)');
+  ctx.fillStyle = gBot;
+  ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+  const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, Math.min(W, H) * 0.38, W * 0.5, H * 0.5, Math.max(W, H) * 0.72);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(4,6,12,0.28)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
 function td_drawParticles(ctx, W, H) {
   if (!TD.particles || !TD.particles.length) return;
   ctx.save();
@@ -6848,9 +7510,15 @@ function td_drawParticles(ctx, W, H) {
       ctx.lineTo(p.x + p.vx*0.045, p.y + p.vy*0.045);
       ctx.stroke();
     } else if (p.type === 'snow') {
-      ctx.globalAlpha = 0.72 * fade;
-      ctx.fillStyle = '#ddeeff';
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.fillStyle = '#eef4ff';
+      const s = Math.max(1, Math.round(p.size));
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), s, s);
+    } else if (p.type === 'dust') {
+      ctx.globalAlpha = 0.45 * fade;
+      ctx.fillStyle = 'rgb(196, 168, 110)';
+      const s = Math.max(1, Math.round(p.size));
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), s, s);
     } else if (p.type === 'ember') {
       const glow = 0.5+0.5*Math.sin(Date.now()*0.009+p.x*0.04);
       ctx.globalAlpha = 0.85 * fade;
